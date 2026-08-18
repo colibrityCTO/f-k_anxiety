@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import AccountLink from '../components/AccountLink'
 import Composer from '../components/Composer'
 import Markdown from '../components/Markdown'
 import Message from '../components/Message'
@@ -7,6 +8,8 @@ import { api, sendStream } from '../lib/api'
 import { cacheContext, flushQueue, loadContext } from '../lib/panic'
 import { loadReminder, scheduleReminder } from '../lib/reminder'
 import type { DayState, PanicContext, ThreadItem, WidgetType } from '../lib/types'
+import { useAuth } from '../state/AuthContext'
+import Compte from './Compte'
 import QuickChill from './QuickChill'
 
 /**
@@ -22,6 +25,22 @@ function lastWidgetId(list: ThreadItem[]): string | null {
   for (let index = list.length - 1; index >= 0; index -= 1) {
     if (list[index].kind === 'widget') return list[index].id
   }
+  return null
+}
+
+/**
+ * Ce que la page Compte a d'urgent à dire, ou `null`.
+ *
+ * Sert le point sur le bouton. Volontairement limité à ce que l'utilisateur ne peut
+ * pas deviner autrement : un consentement jamais répondu, un questionnaire initial
+ * jamais rempli. Un point permanent serait ignoré au bout de deux jours.
+ */
+function accountAttention(user: { profile?: Record<string, unknown> } | null): string | null {
+  const profile = user?.profile ?? {}
+  const consents = (profile.consentements ?? {}) as Record<string, unknown>
+  if (consents.cohorte === undefined) return 'une question de consentement attend une réponse'
+  const onboarding = profile.onboarding as Record<string, unknown> | undefined
+  if (!onboarding?.done_at) return 'questionnaire initial pas encore rempli'
   return null
 }
 
@@ -73,6 +92,10 @@ export default function Chat() {
   // est là : en crise il n'y en a peut-être pas, et il ne doit y avoir aucune attente.
   const [panic, setPanic] = useState<{ context: PanicContext; stale: number | null } | null>(null)
   const [panicOpen, setPanicOpen] = useState(false)
+  // La page Compte se superpose : le fil n'est pas démonté, donc revenir retrouve
+  // la position de lecture exacte.
+  const [compteOpen, setCompteOpen] = useState(false)
+  const { user } = useAuth()
   const bottom = useRef<HTMLDivElement | null>(null)
   const view = useRef<HTMLDivElement | null>(null)
   const abort = useRef<AbortController | null>(null)
@@ -315,6 +338,7 @@ export default function Chat() {
     <div className="app">
       <header className="topbar">
         <div className="wordmark">Fuck&nbsp;Anxiety</div>
+        <AccountLink attention={accountAttention(user)} onOpen={() => setCompteOpen(true)} />
       </header>
 
       <div className="thread" ref={view}>
@@ -370,6 +394,8 @@ export default function Chat() {
         onOpenWidget={openWidget}
         onPanic={() => setPanicOpen(true)}
       />
+
+      {compteOpen && <Compte onClose={() => setCompteOpen(false)} />}
 
       {panicOpen && panic && (
         <QuickChill

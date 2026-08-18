@@ -21,7 +21,13 @@ const checkinMissing = async () => {
   }
 }
 
-export default function Account(_props: WidgetProps) {
+/**
+ * Les réglages. Rendu à deux endroits sans être dupliqué : dans la page Compte
+ * (le chemin normal) et dans les items `account` déjà présents dans les fils
+ * existants — le passé ne se réécrit pas, ces items doivent continuer de
+ * fonctionner. D'où les props optionnelles : la page l'appelle sans rien.
+ */
+export default function Account(_props: Partial<WidgetProps> = {}) {
   const { user, logout } = useAuth()
   const [engine, setEngine] = useState<EngineStatus | null>(null)
   const [memory, setMemory] = useState<MemoryStats | null>(null)

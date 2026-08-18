@@ -138,6 +138,12 @@ code {
 
 /* Le logo, en haut, en grand. Rien d'autre. */
 .topbar {
+  /* En flex depuis la V5 : le bouton du compte s'installe à droite du nom. Sans ça
+     il se posait sous le titre, où personne ne l'aurait cherché. */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--g2);
   padding: var(--g2) var(--g3) 12px;
   border-bottom: var(--b) solid var(--paper);
   flex: 0 0 auto;
@@ -1108,6 +1114,79 @@ th {
   font-size: 0.5625rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+}
+
+/* ===========================================================================
+   PAGE COMPTE
+   La seule page de l'application avec l'écran de crise. Superposée au fil, qui
+   n'est pas démonté : revenir retrouve la position de lecture exacte.
+   =========================================================================== */
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: var(--ink);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.page-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--g2);
+  border-bottom: var(--bt) solid var(--paper);
+  position: sticky;
+  top: 0;
+  background: var(--ink);
+}
+.page-title {
+  font-family: var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 1.25rem;
+}
+.page-body {
+  flex: 1;
+  padding: var(--g3) var(--g2) var(--g4);
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Le bouton de la barre. Le point signale ce que l'utilisateur ne peut pas
+   deviner autrement — un consentement sans réponse, un questionnaire non rempli.
+   Un point permanent serait ignoré au bout de deux jours, d'où la condition. */
+.topbtn {
+  position: relative;
+  flex: 0 0 auto;
+}
+.topbtn.has-dot::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+}
+
+/* Case à cocher avec son explication à côté, pas en dessous : un consentement se
+   lit avant d'être coché, et un libellé de trois mots ne se lit pas. */
+.check {
+  display: flex;
+  gap: var(--g2);
+  align-items: flex-start;
+  margin: var(--g2) 0;
+  cursor: pointer;
+  line-height: 1.45;
+  font-size: 0.875rem;
+}
+.check input {
+  flex: 0 0 auto;
+  margin-top: 3px;
 }
 
 /* ===========================================================================

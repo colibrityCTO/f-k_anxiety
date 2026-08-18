@@ -3,9 +3,18 @@
 Programme quotidien de suivi des troubles anxieux. Deux applications : une API **FastAPI** et
 un front **React + Vite + TypeScript**. Accessible uniquement aux utilisateurs connectés (JWT).
 
-**Tout se passe dans un fil de conversation.** Pas de navigation, pas d'onglets, pas de pages :
-un seul écran, une saisie en bas, un bouton **+** qui ouvre les widgets. Tout ce que fait
-l'application est soit un message, soit un widget dans le fil — y compris se déconnecter.
+**Le suivi se passe entièrement dans un fil de conversation.** Un seul écran, une saisie en
+bas, un bouton **+** qui ouvre les widgets. Tout ce qui relève du suivi est soit un message,
+soit un widget dans le fil.
+
+Deux choses en sortent, et chacune pour une raison précise :
+
+- **QUICK CHILL**, le mode crise, en plein écran : un fil qui défile coûte de l'attention
+  qu'on n'a pas pendant une attaque de panique. Le récapitulatif est déposé dans le fil
+  **après**, donc la trace reste là où elle doit être.
+- **La page Compte**, en haut à droite : changer son heure de rappel n'est pas un événement
+  et n'a rien à faire dans un journal de santé. C'est le même raisonnement qui fait que
+  consulter ses chiffres ne laisse plus de trace dans le fil.
 
 Deux façons d'entrer une donnée :
 

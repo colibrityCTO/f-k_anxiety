@@ -25,8 +25,9 @@ const TILES: { type: WidgetType; name: string; icon: string }[] = [
   { type: 'memoire', name: 'Mémoire', icon: 'memory' },
   { type: 'rapport', name: 'Rapport', icon: 'report' },
   { type: 'sources', name: 'Sources', icon: 'sources' },
-  { type: 'account', name: 'Compte', icon: 'account' },
-  { type: 'logout', name: 'Sortir', icon: 'logout' },
+  // `account` et `logout` ont quitté la grille : ils vivent dans la page Compte,
+  // atteignable en haut à droite. Leurs types restent acceptés côté serveur et
+  // dans `WidgetType`, parce que des items de ces types sont déjà dans les fils.
 ]
 
 export default function Composer({
