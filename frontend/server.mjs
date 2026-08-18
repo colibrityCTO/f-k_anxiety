@@ -91,25 +91,134 @@ function proxy(req, res) {
       headers: { ...req.headers, host: target.host },
     },
     (upstreamRes) => {
-      res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers)
+      const status = upstreamRes.statusCode || 502
+      const type = String(upstreamRes.headers['content-type'] || '')
+
+      /*
+       * Une erreur 5xx qui n'est pas du JSON ne vient pas de l'API : c'est la
+       * page d'erreur de l'hébergeur, servie quand le service ne répond pas.
+       * Transmise telle quelle, elle arrive au front sous forme de HTML que le
+       * client n'arrive pas à lire, et l'utilisateur voit « Erreur 502 » sans
+       * savoir quoi corriger. On la remplace par un message actionnable.
+       */
+      if (status >= 500 && !type.includes('json')) {
+        upstreamRes.resume() // on vide le flux sans le lire
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(
+          JSON.stringify({
+            detail:
+              `L'API a répondu ${status} sans contenu JSON : ce n'est pas elle qui parle, mais ` +
+              `l'hébergeur. Vérifie que le service backend est en ligne et que API_ORIGIN pointe ` +
+              `dessus (actuellement ${API_ORIGIN}).`,
+            upstream_status: status,
+            api_origin: API_ORIGIN,
+          }),
+        )
+        return
+      }
+
+      res.writeHead(status, upstreamRes.headers)
       upstreamRes.pipe(res)
     },
   )
 
   upstream.on('error', (error) => {
     res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
-    res.end(JSON.stringify({ detail: `Backend injoignable : ${error.message}` }))
+    res.end(
+      JSON.stringify({
+        detail: `Backend injoignable depuis le front : ${error.message}`,
+        api_origin: API_ORIGIN,
+      }),
+    )
   })
 
   req.pipe(upstream)
 }
 
+/** Interroge `API_ORIGIN/health` et rapporte le résultat brut, sans l'interpréter. */
+function checkApi() {
+  return new Promise((resolve) => {
+    if (!API_ORIGIN) return resolve({ ok: false, erreur: 'API_ORIGIN non définie' })
+
+    const target = new URL(API_ORIGIN)
+    const send = target.protocol === 'https:' ? httpsRequest : httpRequest
+    const started = Date.now()
+    const upstream = send(
+      {
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port || (target.protocol === 'https:' ? 443 : 80),
+        method: 'GET',
+        path: (target.pathname === '/' ? '' : target.pathname) + '/health',
+        headers: { host: target.host, accept: 'application/json' },
+        timeout: 5000,
+      },
+      (upstreamRes) => {
+        let body = ''
+        upstreamRes.setEncoding('utf8')
+        upstreamRes.on('data', (chunk) => {
+          if (body.length < 2000) body += chunk
+        })
+        upstreamRes.on('end', () => {
+          let parsed = null
+          try {
+            parsed = JSON.parse(body)
+          } catch {
+            parsed = { brut: body.slice(0, 200) }
+          }
+          resolve({
+            ok: (upstreamRes.statusCode || 0) < 400,
+            statut: upstreamRes.statusCode,
+            ms: Date.now() - started,
+            reponse: parsed,
+          })
+        })
+      },
+    )
+    upstream.on('timeout', () => {
+      upstream.destroy()
+      resolve({ ok: false, erreur: 'délai dépassé (5 s)' })
+    })
+    upstream.on('error', (error) => resolve({ ok: false, erreur: error.message }))
+    upstream.end()
+  })
+}
+
 const server = createServer((req, res) => {
   const pathname = decodeURIComponent((req.url || '/').split('?')[0])
 
+  /*
+   * `/healthz` sert deux usages. Sans paramètre : la vivacité, pour le
+   * healthcheck de l'hébergeur. Avec `?deep=1` : il interroge réellement l'API
+   * et renvoie ce qu'elle répond — de quoi savoir en une requête si le problème
+   * est le front, la variable API_ORIGIN, ou le backend.
+   */
   if (pathname === '/healthz') {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
-    res.end('ok')
+    if (!(req.url || '').includes('deep')) {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('ok')
+      return
+    }
+    checkApi().then((api) => {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(
+        JSON.stringify(
+          {
+            front: 'ok',
+            serveur: 'server.mjs',
+            api_origin: API_ORIGIN || null,
+            api: api,
+            diagnostic: !API_ORIGIN
+              ? "API_ORIGIN n'est pas définie sur le service front : ajoute-la dans les variables Railway."
+              : api.ok
+                ? null
+                : `Le front ne joint pas l'API : ${api.erreur ?? `réponse ${api.statut}`}.`,
+          },
+          null,
+          2,
+        ),
+      )
+    })
     return
   }
 

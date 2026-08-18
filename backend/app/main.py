@@ -118,9 +118,59 @@ app.include_router(push.router)
 
 @app.get("/health", tags=["meta"])
 def health() -> JSONResponse:
+    """Vivacité : répond 200 dès que le processus tourne.
+
+    Volontairement tolérant. Un healthcheck qui échoue met le service **hors
+    ligne** chez Railway : si `/health` renvoyait 503 parce que la base est
+    momentanément injoignable, une coupure de quelques secondes côté Postgres
+    ferait tomber toute l'API — et le front n'afficherait qu'un 502 opaque.
+
+    L'état réel des dépendances est dans le corps de la réponse, et
+    `/health/deep` reste strict pour la supervision.
+    """
     status = db.healthcheck()
-    code = 200 if status.get("database") == "up" else 503
-    return JSONResponse(status_code=code, content=status)
+    degraded = status.get("database") != "up" or not status.get("pgvector")
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "degraded" if degraded else "ok",
+            **status,
+            "diagnostic": _diagnose(status),
+        },
+    )
+
+
+@app.get("/health/deep", tags=["meta"])
+def health_deep() -> JSONResponse:
+    """Disponibilité réelle : 503 si la base ou pgvector manquent."""
+    status = db.healthcheck()
+    ready = status.get("database") == "up" and bool(status.get("pgvector"))
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ok" if ready else "indisponible", **status, "diagnostic": _diagnose(status)},
+    )
+
+
+def _diagnose(status: dict) -> str | None:
+    """Dit quoi corriger, au lieu de laisser deviner."""
+    if status.get("database") != "up":
+        return (
+            "PostgreSQL injoignable : vérifie DATABASE_URL (sur Railway, "
+            "${{Postgres.DATABASE_URL}}) et que le service Postgres tourne."
+        )
+    if not status.get("pgvector"):
+        return (
+            "Extension pgvector absente : utilise le template « Postgres + pgvector » "
+            "(image pgvector/pgvector), pas le Postgres standard."
+        )
+    if not status.get("kb_chunks"):
+        return "Corpus non ingéré : lance « python -m app.ingest » ou laisse AUTO_INGEST à true."
+    if not status.get("kb_chunks_embedded"):
+        return (
+            "Corpus non vectorisé : sans OPENAI_API_KEY la recherche fonctionne en plein texte "
+            "seul. Ajoute la clé puis relance l'ingestion."
+        )
+    return None
 
 
 @app.get("/meta", tags=["meta"])
