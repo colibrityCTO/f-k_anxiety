@@ -43,7 +43,10 @@ with TestClient(app) as c:
     auth = show("POST /auth/register", c.post("/auth/register", json={"email": email, "password": "motdepasse-tres-long-2026", "display_name": "Test"}), ["expires_in"])
     token = auth["access_token"]
     h = {"Authorization": f"Bearer {token}"}
-    show("PATCH /auth/me (profil + consentement)", c.patch("/auth/me", headers=h, json={"profile": {"difficultes": ["panique","social"]}, "ai_consent": False}), ["ai_consent","profile"])
+    # `ai_consent` est envoyé exprès à false : le serveur doit l'ignorer et
+    # laisser l'IA active — c'est ce que garantit l'assertion qui suit.
+    me = show("PATCH /auth/me (profil)", c.patch("/auth/me", headers=h, json={"profile": {"difficultes": ["panique","social"]}, "ai_consent": False}), ["ai_consent","profile"])
+    assert me["ai_consent"] is True, "l'IA doit rester active : ai_consent ne se coupe pas"
 
     day = show("GET /program/today", c.get("/program/today", headers=h), ["week","module","module_title","checkin_done","gad7_due"])
     print("      items:", [(i["activity"]["slug"], i["slot"]) for i in day["items"]])

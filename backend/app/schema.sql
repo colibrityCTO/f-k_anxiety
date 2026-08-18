@@ -22,13 +22,23 @@ CREATE TABLE IF NOT EXISTS users (
     -- Profil issu de l'onboarding : cibles principales, contre-indications
     -- médicales déclarées, préférences. Sert à personnaliser le programme.
     profile             jsonb NOT NULL DEFAULT '{}'::jsonb,
-    -- Consentement explicite à l'envoi du contenu du journal vers l'API LLM.
-    -- Sans consentement, seule l'analyse déterministe locale est utilisée.
-    ai_consent          boolean NOT NULL DEFAULT false,
+    -- Envoi du contenu du journal vers l'API LLM. Décision produit : l'IA est
+    -- active pour tout le monde et ce n'est plus un réglage. La colonne reste,
+    -- le code la lit encore, mais elle vaut true partout — voir la bascule
+    -- juste après la table.
+    ai_consent          boolean NOT NULL DEFAULT true,
     created_at          timestamptz NOT NULL DEFAULT now(),
     last_login_at       timestamptz
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email));
+
+-- Bascule de l'IA vers « toujours active ». Deux instructions, deux rôles :
+-- `SET DEFAULT` vise les bases déjà créées, où le `CREATE TABLE` ci-dessus
+-- n'est plus rejoué ; l'`UPDATE` rattrape les comptes existants restés à
+-- false, qui n'ont plus d'interrupteur pour le faire eux-mêmes. Les deux sont
+-- sans effet au passage suivant — ce fichier est rejoué à chaque démarrage.
+ALTER TABLE users ALTER COLUMN ai_consent SET DEFAULT true;
+UPDATE users SET ai_consent = true WHERE ai_consent = false;
 
 -- ---------------------------------------------------------------------------
 --  État du programme (Protocole Unifié : 8 modules répartis sur 12 semaines)

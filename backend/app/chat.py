@@ -324,7 +324,10 @@ def _local_reason(user: dict[str, Any], detail: str | None = None) -> str:
     if not settings.has_llm:
         return "Aucune clé d'IA n'est configurée sur ce serveur"
     if not user.get("ai_consent"):
-        return "Tu n'as pas activé l'IA sur ton compte — ouvre le widget Compte"
+        # Ne devrait plus arriver : l'IA est active par défaut et rien ne permet
+        # de la couper. On ne renvoie donc plus l'utilisateur vers un réglage qui
+        # n'existe pas — c'est une anomalie de compte, pas un choix.
+        return "L'IA n'est pas active sur ce compte, ce qui n'est pas censé arriver"
     return detail or "Le modèle n'a pas répondu"
 
 

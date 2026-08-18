@@ -81,7 +81,9 @@ export const api = {
     post<AuthResponse>('/auth/register', { email, password, display_name }),
   login: (email: string, password: string) => post<AuthResponse>('/auth/login', { email, password }),
   me: () => get<User>('/auth/me'),
-  updateMe: (payload: Partial<Pick<User, 'display_name' | 'ai_consent' | 'profile'>>) =>
+  // `ai_consent` n'est pas modifiable : l'IA est active sur tous les comptes et
+  // le serveur refuse de la remettre à false.
+  updateMe: (payload: Partial<Pick<User, 'display_name' | 'profile'>>) =>
     patch<User>('/auth/me', payload),
 
   // --- Le fil --------------------------------------------------------------

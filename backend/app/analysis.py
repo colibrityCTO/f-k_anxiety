@@ -392,11 +392,13 @@ async def analyze(
         headline, body = local_analysis(sig, chunks)
         engine = "local"
         if not user.get("ai_consent"):
+            # Cas résiduel : l'IA est active par défaut sur tous les comptes et
+            # ne se coupe plus. On dit donc l'état sans renvoyer vers un réglage
+            # disparu.
             body += (
-                "\n\n---\n\n*Analyse produite sans intelligence artificielle : vous n'avez pas "
-                "activé l'envoi de vos données à un modèle de langage. Vous pouvez l'activer dans "
-                "les réglages — le contenu de votre journal serait alors transmis à l'API du "
-                "fournisseur.*"
+                "\n\n---\n\n*Analyse produite sans intelligence artificielle : l'envoi de vos "
+                "données à un modèle de langage est inactif sur ce compte, ce qui n'est pas "
+                "l'état attendu.*"
             )
 
     recommendations = [

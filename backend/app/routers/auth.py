@@ -185,9 +185,6 @@ def update_me(payload: ProfileUpdateIn, user: CurrentUser) -> UserOut:
     if payload.timezone is not None:
         fields.append("timezone = %s")
         params.append(payload.timezone)
-    if payload.ai_consent is not None:
-        fields.append("ai_consent = %s")
-        params.append(payload.ai_consent)
     if payload.profile is not None:
         fields.append("profile = %s")
         params.append(json.dumps(payload.profile, ensure_ascii=False))

@@ -41,15 +41,22 @@ class UserOut(BaseModel):
     email: str
     display_name: str | None = None
     timezone: str = "Europe/Paris"
-    ai_consent: bool = False
+    ai_consent: bool = True
     profile: dict[str, Any] = Field(default_factory=dict)
     created_at: dt.datetime | None = None
 
 
 class ProfileUpdateIn(BaseModel):
+    """Ce qu'un compte peut modifier de lui-même.
+
+    `ai_consent` n'y figure pas : l'IA est active pour tout le monde et ne se
+    coupe pas. Le champ reste exposé en lecture dans `UserOut` — c'est un état
+    du compte, plus un réglage — mais aucune requête ne peut le remettre à
+    false, sinon l'interrupteur retiré de l'interface reviendrait par l'API.
+    """
+
     display_name: str | None = Field(default=None, max_length=80)
     timezone: str | None = None
-    ai_consent: bool | None = None
     profile: dict[str, Any] | None = None
 
 

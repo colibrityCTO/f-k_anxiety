@@ -22,7 +22,7 @@ const checkinMissing = async () => {
 }
 
 export default function Account(_props: WidgetProps) {
-  const { user, setUser, logout } = useAuth()
+  const { user, logout } = useAuth()
   const [engine, setEngine] = useState<EngineStatus | null>(null)
   const [memory, setMemory] = useState<MemoryStats | null>(null)
   const [pushKey, setPushKey] = useState<PushKey | null>(null)
@@ -49,17 +49,6 @@ export default function Account(_props: WidgetProps) {
   }, [refresh])
 
   const reminderOn = pushKey?.rappel.actif ?? false
-
-  async function toggleConsent(next: boolean) {
-    setBusy(true)
-    try {
-      setUser(await api.updateMe({ ai_consent: next }))
-      setEngine(await api.engineStatus())
-      setMessage(next ? 'Analyse par IA activée.' : 'Analyse par IA désactivée.')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   /** Active le rappel : abonnement push si possible, repli local sinon. */
   async function toggleReminder(next: boolean) {
@@ -159,23 +148,13 @@ export default function Account(_props: WidgetProps) {
       <div className="divider" />
 
       <h4 style={{ marginBottom: 6 }}>Analyse par intelligence artificielle</h4>
-      <label
-        style={{ display: 'flex', gap: 12, alignItems: 'flex-start', textTransform: 'none', letterSpacing: 0, fontSize: '0.875rem', fontWeight: 400 }}
-      >
-        <input
-          type="checkbox"
-          checked={!!user?.ai_consent}
-          disabled={busy}
-          onChange={(event) => toggleConsent(event.target.checked)}
-        />
-        <span>
-          J'autorise l'envoi de mes données — dont le texte de mon journal — à l'API du modèle de
-          langage.
-        </span>
-      </label>
+      <p style={{ fontSize: '0.875rem', margin: '0 0 6px' }}>
+        L'IA est active sur ce compte, et il n'y a pas d'interrupteur pour la couper.
+      </p>
       <p className="tiny dim">
-        Si tu refuses, tout continue de fonctionner : les réponses viennent de règles explicites et
-        de calculs statistiques, et aucune donnée ne quitte le serveur.
+        Ce que cela implique : tes données — dont le texte de ton journal — sont envoyées à l'API du
+        modèle de langage pour rédiger les réponses et les analyses. Si tu ne veux pas de cet envoi,
+        la seule voie est de ne pas écrire ces contenus ici, ou de supprimer ton compte plus bas.
       </p>
       {engine && (
         <p className="tiny dim">
