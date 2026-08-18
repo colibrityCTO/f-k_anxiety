@@ -162,7 +162,7 @@ export default function WidgetHost({
   if (frozen) {
     const cells = item.status === 'valide' ? summarise(item) : []
     return (
-      <div className={`w w-done${open ? '' : ' w-shut'}`}>
+      <div className={`w${open ? '' : ' w-shut'}`}>
         {head}
         {open && (
           <>

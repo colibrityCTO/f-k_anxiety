@@ -222,13 +222,13 @@ code {
   background: var(--paper);
   color: var(--ink);
 }
-.w-done .w-toggle:hover .w-chev {
-  background: var(--ink);
-  color: var(--paper);
-}
-/* Widget replié : plus de trait sous l'en-tête, il ne porte plus rien. */
+/* Widget replié : le titre et son interrupteur, rien d'autre — ni trait sous
+   l'en-tête, ni étiquette. */
 .w-shut > .w-toggle {
   border-bottom: 0;
+}
+.w-shut .w-tag {
+  display: none;
 }
 .w-chev {
   display: flex;
@@ -266,15 +266,8 @@ code {
   flex-wrap: wrap;
   align-items: center;
 }
-/* Widget figé : bloc inversé, corps remplacé par un récapitulatif. */
-.w-done {
-  background: var(--paper);
-  color: var(--ink);
-}
-.w-done .w-head,
-.w-done .w-foot {
-  border-color: var(--ink);
-}
+/* Widget figé : même cadre que les autres, corps remplacé par un récapitulatif.
+   Le seul bloc plein du fil reste le message de l'utilisateur. */
 .sum {
   display: flex;
   flex-wrap: wrap;
@@ -322,10 +315,6 @@ button:hover:not(:disabled) {
   background: var(--paper);
   color: var(--ink);
 }
-.w-done button:hover:not(:disabled) {
-  background: var(--ink);
-  color: var(--paper);
-}
 button:disabled {
   opacity: 0.3;
   cursor: not-allowed;
@@ -335,10 +324,6 @@ button:disabled {
   color: var(--ink);
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--ink);
-  color: var(--paper);
-}
-.w-done .btn-primary {
   background: var(--ink);
   color: var(--paper);
 }
@@ -589,10 +574,6 @@ input[type='checkbox']:checked {
   background: var(--paper);
   color: var(--ink);
 }
-.w-done .why[open] summary::before {
-  background: var(--ink);
-  color: var(--paper);
-}
 .why-body {
   margin-top: var(--g2);
   font-size: 0.875rem;
@@ -814,8 +795,7 @@ th {
   text-align: center;
   vertical-align: 2px;
 }
-.msg-me .cite,
-.w-done .cite {
+.msg-me .cite {
   background: var(--ink);
   color: var(--paper);
 }
