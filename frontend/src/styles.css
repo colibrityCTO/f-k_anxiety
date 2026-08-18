@@ -161,13 +161,19 @@ code {
 /* --- Messages : deux fenêtres, vide contre plein ------------------------ */
 
 .msg {
-  max-width: 58ch;
+  /* L'assistant occupe toute la colonne : sa prose est le corps du texte. */
+  width: 100%;
+  margin-right: auto;
   padding: 14px var(--g2);
   border: var(--b) solid var(--paper);
   font-size: 1rem;
 }
+/* L'utilisateur, lui, se serre à droite : un bloc plein qui épouse son contenu. */
 .msg-me {
+  width: fit-content;
+  max-width: min(46ch, 85%);
   margin-left: auto;
+  margin-right: 0;
   background: var(--paper);
   color: var(--ink);
   font-weight: 500;
@@ -195,6 +201,44 @@ code {
   gap: var(--g2);
   padding: 12px var(--g2);
   border-bottom: var(--b) solid var(--paper);
+}
+.w-toggle {
+  width: 100%;
+  font-family: var(--body);
+  font-size: 1rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  text-align: left;
+  border: 0;
+  border-bottom: var(--b) solid var(--paper);
+  transition: none;
+}
+.w-toggle:hover:not(:disabled) {
+  background: transparent;
+  color: inherit;
+}
+.w-toggle:hover .w-chev {
+  background: var(--paper);
+  color: var(--ink);
+}
+.w-done .w-toggle:hover .w-chev {
+  background: var(--ink);
+  color: var(--paper);
+}
+/* Widget replié : plus de trait sous l'en-tête, il ne porte plus rien. */
+.w-shut > .w-toggle {
+  border-bottom: 0;
+}
+.w-chev {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 1px solid currentColor;
+  align-self: center;
 }
 .w-title {
   font-family: var(--display);

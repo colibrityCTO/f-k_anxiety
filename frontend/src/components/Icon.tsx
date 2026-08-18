@@ -4,6 +4,7 @@
  */
 const PATHS: Record<string, string> = {
   plus: 'M10 2v16M2 10h16',
+  minus: 'M2 10h16',
   close: 'M3 3l14 14M17 3L3 17',
   checkin: 'M3 3h14v14H3zM6 10l3 3 5-6',
   breath: 'M3 3h14v14H3zM7 10h6',

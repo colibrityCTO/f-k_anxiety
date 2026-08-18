@@ -15,6 +15,14 @@ import type { DayState, ThreadItem, WidgetType } from '../lib/types'
  * Seule exception : pendant le streaming, la prose s'affiche dans un bloc
  * provisoire, remplacé par l'item réel dès qu'il arrive.
  */
+/** Dernier widget d'une liste d'items : c'est lui qui reste ouvert. */
+function lastWidgetId(list: ThreadItem[]): string | null {
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    if (list[index].kind === 'widget') return list[index].id
+  }
+  return null
+}
+
 export default function Chat() {
   const [items, setItems] = useState<ThreadItem[]>([])
   const [state, setState] = useState<DayState | null>(null)
@@ -22,6 +30,8 @@ export default function Chat() {
   const [busy, setBusy] = useState(false)
   const [streaming, setStreaming] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Un seul widget ouvert à la fois : celui dont l'identifiant est ici.
+  const [openId, setOpenId] = useState<string | null>(null)
   const bottom = useRef<HTMLDivElement | null>(null)
   const abort = useRef<AbortController | null>(null)
 
@@ -42,6 +52,7 @@ export default function Chat() {
       .then((thread) => {
         setItems(thread.items)
         setState(thread.state)
+        setOpenId(lastWidgetId(thread.items))
         scroll()
         // Réarme le rappel à chaque ouverture : c'est le seul moment où on est sûr
         // que la page tourne.
@@ -60,6 +71,8 @@ export default function Chat() {
         incoming.forEach((item) => byId.set(item.id, item))
         return [...byId.values()]
       })
+      const last = lastWidgetId(incoming)
+      if (last) setOpenId(last)
       scroll('smooth')
     },
     [scroll],
@@ -147,6 +160,8 @@ export default function Chat() {
               onSubmit={(values) => submit(item.id, values)}
               onSkip={() => skip(item.id)}
               onOpen={openWidget}
+              open={openId === item.id}
+              onToggle={() => setOpenId((current) => (current === item.id ? null : item.id))}
             />
           ) : (
             <Message key={item.id} item={item} busy={busy} onChoose={send} />

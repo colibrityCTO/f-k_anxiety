@@ -1,3 +1,4 @@
+import Icon from './Icon'
 import type { ThreadItem, WidgetType } from '../lib/types'
 import Account from '../widgets/Account'
 import Analysis from '../widgets/Analysis'
@@ -124,58 +125,82 @@ export default function WidgetHost({
   onSubmit,
   onSkip,
   onOpen,
-}: WidgetProps & { onOpen: (type: WidgetType, label?: string) => void }) {
+  open,
+  onToggle,
+}: WidgetProps & {
+  onOpen: (type: WidgetType, label?: string) => void
+  open: boolean
+  onToggle: () => void
+}) {
   const type = (item.widget_type ?? 'checkin') as WidgetType
   const meta = META[type]
   const frozen =
     item.status === 'valide' || item.status === 'reporte' || item.status === 'remplace'
+  const tag = !frozen
+    ? meta.tag
+    : item.status === 'valide'
+      ? 'Enregistré'
+      : item.status === 'reporte'
+        ? 'Reporté'
+        : 'Remplacé'
+
+  /**
+   * L'en-tête est l'interrupteur du widget : replié, il ne reste que le titre et
+   * son étiquette. Un seul widget est ouvert à la fois — les précédents se
+   * referment d'eux-mêmes, et au lancement c'est le dernier du fil qui est ouvert.
+   */
+  const head = (
+    <button type="button" className="w-head w-toggle" aria-expanded={open} onClick={onToggle}>
+      <div className="w-title">{meta.title}</div>
+      <div className="w-tag">{tag}</div>
+      <span className="w-chev">
+        <Icon name={open ? 'minus' : 'plus'} size={14} />
+      </span>
+    </button>
+  )
 
   if (frozen) {
     const cells = item.status === 'valide' ? summarise(item) : []
-    const tag =
-      item.status === 'valide' ? 'Enregistré' : item.status === 'reporte' ? 'Reporté' : 'Remplacé'
     return (
-      <div className="w w-done">
-        <div className="w-head">
-          <div className="w-title">{meta.title}</div>
-          <div className="w-tag">{tag}</div>
-        </div>
-        {cells.length > 0 && (
-          <div className="w-body">
-            <div className="sum">
-              {cells.map((cell) => (
-                <div key={cell.label}>
-                  <span>{cell.label}</span>
-                  <b>{cell.value}</b>
+      <div className={`w w-done${open ? '' : ' w-shut'}`}>
+        {head}
+        {open && (
+          <>
+            {cells.length > 0 && (
+              <div className="w-body">
+                <div className="sum">
+                  {cells.map((cell) => (
+                    <div key={cell.label}>
+                      <span>{cell.label}</span>
+                      <b>{cell.value}</b>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+            )}
+            <div className="w-foot">
+              <button className="btn-sm" disabled={busy} onClick={() => onOpen(type, meta.title)}>
+                {item.status === 'valide' ? 'Corriger' : 'Le faire maintenant'}
+              </button>
+              <span className="tiny dim">
+                {item.status === 'valide'
+                  ? 'Figé : « Corriger » en ouvre un neuf, sans réécrire le passé.'
+                  : item.status === 'reporte'
+                    ? 'Reporté — ce n’est pas un échec, c’est une donnée.'
+                    : 'Remplacé par une saisie plus récente.'}
+              </span>
             </div>
-          </div>
+          </>
         )}
-        <div className="w-foot">
-          <button className="btn-sm" disabled={busy} onClick={() => onOpen(type, meta.title)}>
-            {item.status === 'valide' ? 'Corriger' : 'Le faire maintenant'}
-          </button>
-          <span className="tiny dim">
-            {item.status === 'valide'
-              ? 'Figé : « Corriger » en ouvre un neuf, sans réécrire le passé.'
-              : item.status === 'reporte'
-                ? 'Reporté — ce n’est pas un échec, c’est une donnée.'
-                : 'Remplacé par une saisie plus récente.'}
-          </span>
-        </div>
       </div>
     )
   }
 
   const Body = BODIES[type]
   return (
-    <div className="w">
-      <div className="w-head">
-        <div className="w-title">{meta.title}</div>
-        <div className="w-tag">{meta.tag}</div>
-      </div>
-      <Body item={item} busy={busy} onSubmit={onSubmit} onSkip={onSkip} />
+    <div className={`w${open ? '' : ' w-shut'}`}>
+      {head}
+      {open && <Body item={item} busy={busy} onSubmit={onSubmit} onSkip={onSkip} />}
     </div>
   )
 }
