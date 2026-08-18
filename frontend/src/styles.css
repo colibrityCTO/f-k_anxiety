@@ -16,6 +16,11 @@
   --g2: 16px;
   --g3: 24px;
   --g4: 40px;
+  /* Largeur des blocs de l'application — réponses de l'assistant et widgets.
+     Une seule valeur pour les deux : ils doivent rester de taille identique, et
+     la marge laissée à droite est ce qui distingue « ce que dit l'app » de
+     « ce que tu dis », collé au bord opposé. */
+  --fil: 90%;
   color-scheme: dark;
 }
 
@@ -123,6 +128,13 @@ code {
     border-right: 0;
   }
 }
+/* Sur un téléphone, la gouttière coûterait des pixels qu'un widget — trois
+   colonnes de compteurs, des curseurs — n'a pas en trop. */
+@media (max-width: 640px) {
+  :root {
+    --fil: 100%;
+  }
+}
 
 /* Le logo, en haut, en grand. Rien d'autre. */
 .topbar {
@@ -161,8 +173,9 @@ code {
 /* --- Messages : deux fenêtres, vide contre plein ------------------------ */
 
 .msg {
-  /* L'assistant occupe toute la colonne : sa prose est le corps du texte. */
-  width: 100%;
+  /* L'assistant tient la gauche, sans aller jusqu'au bord : la gouttière de
+     droite est la respiration du fil. */
+  width: var(--fil);
   margin-right: auto;
   padding: 14px var(--g2);
   border: var(--b) solid var(--paper);
@@ -191,6 +204,10 @@ code {
 /* --- Widget : le bloc unitaire ------------------------------------------ */
 
 .w {
+  /* Exactement la largeur d'une réponse de l'assistant : un widget est une
+     réponse, pas une pièce jointe. */
+  width: var(--fil);
+  margin-right: auto;
   border: var(--b) solid var(--paper);
   background: var(--ink);
 }
