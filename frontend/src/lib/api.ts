@@ -185,11 +185,14 @@ export async function sendStream(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  // Un flux qui se termine sans `items` ni `error` laisserait le bloc provisoire
+  // disparaître sans rien dire : on garde la trace pour pouvoir l'expliquer.
+  let settled = false
 
   const dispatch = (raw: string) => {
     let event = 'message'
     const dataLines: string[] = []
-    for (const line of raw.split('\n')) {
+    for (const line of raw.split(/\r\n|\r|\n/)) {
       if (line.startsWith('event:')) event = line.slice(6).trim()
       else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''))
     }
@@ -205,9 +208,11 @@ export async function sendStream(
         handlers.onToken?.(data)
         break
       case 'items':
+        settled = true
         handlers.onItems?.(JSON.parse(data) as ThreadItem[])
         break
       case 'error':
+        settled = true
         handlers.onError?.(data)
         break
       case 'done':
@@ -218,10 +223,25 @@ export async function sendStream(
     }
   }
 
+  /**
+   * Ajoute un paquet au tampon en ramenant les fins de ligne à `\n`.
+   *
+   * `sse-starlette` termine ses lignes en CRLF — la spec SSE l'autorise, au même
+   * titre que LF ou CR seul. Sans normalisation, la fin d'événement `\r\n\r\n`
+   * ne contient aucun `\n\n` : plus aucun événement n'est détecté, et toute la
+   * réponse est perdue. Un CR final est mis de côté : il peut être la première
+   * moitié d'un CRLF coupé entre deux paquets.
+   */
+  const feed = (packet: string) => {
+    const merged = buffer + packet
+    const held = merged.endsWith('\r') ? '\r' : ''
+    buffer = merged.slice(0, merged.length - held.length).replace(/\r\n|\r/g, '\n') + held
+  }
+
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-    buffer += decoder.decode(value, { stream: true })
+    feed(decoder.decode(value, { stream: true }))
     let separator = buffer.indexOf('\n\n')
     while (separator !== -1) {
       dispatch(buffer.slice(0, separator))
@@ -230,4 +250,6 @@ export async function sendStream(
     }
   }
   if (buffer.trim()) dispatch(buffer)
+
+  if (!settled) handlers.onError?.('Le flux a été interrompu avant la réponse.')
 }

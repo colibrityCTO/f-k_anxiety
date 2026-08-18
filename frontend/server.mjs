@@ -20,10 +20,43 @@ import { createServer, request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { extname, join, normalize, resolve } from 'node:path'
 
-const PORT = Number(process.env.PORT || 4173)
+const PORT = Number(process.env.PORT || 8080)
 const HOST = process.env.HOST || '0.0.0.0'
 const ROOT = resolve(process.env.STATIC_DIR || './dist')
-const API_ORIGIN = (process.env.API_ORIGIN || '').replace(/\/+$/, '')
+
+/**
+ * Analyse `API_ORIGIN` **une fois**, au démarrage.
+ *
+ * Deux raisons. D'abord le schéma : `API_ORIGIN=exemple.up.railway.app` est la
+ * faute de saisie la plus naturelle, et `new URL()` la refuse — on ajoute donc
+ * `https://` plutôt que de faire échouer la configuration pour un détail.
+ * Ensuite l'isolement : analyser à chaque requête faisait remonter un
+ * `TypeError: Invalid URL` depuis le gestionnaire, ce qui **tuait le processus**.
+ * Une variable mal renseignée doit dégrader le service, pas l'arrêter.
+ */
+function parseOrigin(raw) {
+  const value = (raw || '').trim().replace(/\/+$/, '')
+  if (!value) return { target: null, origin: '', reason: 'API_ORIGIN non définie' }
+
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`
+  try {
+    const target = new URL(candidate)
+    if (!/^https?:$/.test(target.protocol)) {
+      return { target: null, origin: value, reason: `schéma non géré : ${target.protocol}` }
+    }
+    return {
+      target,
+      origin: candidate,
+      reason: null,
+      corrected: candidate !== value ? `schéma ajouté : ${candidate}` : null,
+    }
+  } catch (error) {
+    return { target: null, origin: value, reason: `URL invalide (${error.message})` }
+  }
+}
+
+const API = parseOrigin(process.env.API_ORIGIN)
+const API_ORIGIN = API.origin
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -66,18 +99,20 @@ function serveFile(res, filePath, pathname, statusCode = 200) {
 
 /** Relais transparent vers l'API. Le flux SSE passe sans être tamponné. */
 function proxy(req, res) {
-  if (!API_ORIGIN) {
+  if (!API.target) {
     res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
     res.end(
       JSON.stringify({
         detail:
-          "API_ORIGIN n'est pas configurée sur le service front : impossible de joindre le backend.",
+          `Le relais vers l'API n'est pas utilisable : ${API.reason}. Corrige la variable ` +
+          `API_ORIGIN du service front (exemple : https://mon-api.up.railway.app).`,
+        api_origin: API_ORIGIN || null,
       }),
     )
     return
   }
 
-  const target = new URL(API_ORIGIN)
+  const target = API.target
   const send = target.protocol === 'https:' ? httpsRequest : httpRequest
   const upstreamPath = req.url.replace(/^\/api/, '') || '/'
 
@@ -138,9 +173,9 @@ function proxy(req, res) {
 /** Interroge `API_ORIGIN/health` et rapporte le résultat brut, sans l'interpréter. */
 function checkApi() {
   return new Promise((resolve) => {
-    if (!API_ORIGIN) return resolve({ ok: false, erreur: 'API_ORIGIN non définie' })
+    if (!API.target) return resolve({ ok: false, erreur: API.reason })
 
-    const target = new URL(API_ORIGIN)
+    const target = API.target
     const send = target.protocol === 'https:' ? httpsRequest : httpRequest
     const started = Date.now()
     const upstream = send(
@@ -184,8 +219,36 @@ function checkApi() {
   })
 }
 
+/*
+ * Tout le gestionnaire est sous filet. Une exception synchrone ici ferait tomber
+ * le processus entier, et l'hébergeur répondrait 502 sur *toutes* les routes —
+ * y compris les fichiers statiques, qui n'ont rien à voir. Un bug doit coûter
+ * une requête, pas le service.
+ */
 const server = createServer((req, res) => {
-  const pathname = decodeURIComponent((req.url || '/').split('?')[0])
+  try {
+    handle(req, res)
+  } catch (error) {
+    console.error('Requête en échec :', error)
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ detail: `Erreur interne du serveur front : ${error.message}` }))
+    } else {
+      res.destroy()
+    }
+  }
+})
+
+function handle(req, res) {
+  // Un pourcentage isolé dans l'URL (« /%ok ») fait lever decodeURIComponent :
+  // on retombe sur le chemin brut plutôt que d'échouer.
+  const raw = (req.url || '/').split('?')[0]
+  let pathname = raw
+  try {
+    pathname = decodeURIComponent(raw)
+  } catch {
+    pathname = raw
+  }
 
   /*
    * `/healthz` sert deux usages. Sans paramètre : la vivacité, pour le
@@ -207,9 +270,11 @@ const server = createServer((req, res) => {
             front: 'ok',
             serveur: 'server.mjs',
             api_origin: API_ORIGIN || null,
-            api: api,
-            diagnostic: !API_ORIGIN
-              ? "API_ORIGIN n'est pas définie sur le service front : ajoute-la dans les variables Railway."
+            api_origin_utilisable: Boolean(API.target),
+            api_origin_corrige: API.corrected ?? null,
+            api,
+            diagnostic: !API.target
+              ? `API_ORIGIN inutilisable — ${API.reason}. Corrige-la dans les variables du service front.`
               : api.ok
                 ? null
                 : `Le front ne joint pas l'API : ${api.erreur ?? `réponse ${api.statut}`}.`,
