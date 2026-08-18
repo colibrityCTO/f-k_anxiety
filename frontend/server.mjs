@@ -308,7 +308,7 @@ function handle(req, res) {
 
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
   res.end('dist/index.html introuvable — le build a-t-il tourné ?')
-})
+}
 
 server.listen(PORT, HOST, () => {
   console.log(

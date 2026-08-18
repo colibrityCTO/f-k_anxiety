@@ -37,5 +37,8 @@ COPY server.mjs ./
 # Utilisateur non privilégié, déjà présent dans l'image officielle.
 USER node
 
-EXPOSE 4173
+# Ce port doit suivre le défaut de `server.mjs` : sans variable `PORT`, Railway
+# déduit du `EXPOSE` le port qu'il interroge. Un écart entre les deux, et le
+# conteneur démarre pendant que le healthcheck frappe une porte fermée.
+EXPOSE 8080
 CMD ["node", "server.mjs"]
