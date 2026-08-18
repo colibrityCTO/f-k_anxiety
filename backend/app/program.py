@@ -412,7 +412,67 @@ def adaptive_items(sig: dict[str, Any], profile: dict[str, Any]) -> list[dict[st
             }
         )
 
-    # 8. Difficulté sociale déclarée à l'inscription
+    # 8 bis. Panique déclarée à l'inscription, ou peur des sensations
+    #
+    # La règle 2 ne se déclenche qu'après une attaque **enregistrée dans
+    # l'application**. Or quelqu'un qui vient précisément pour ça n'a pas attendu de
+    # s'inscrire pour en faire : sans cette règle, l'exposition intéroceptive
+    # n'arrivait qu'au module 6, soit huit semaines. Le programme 12 semaines la place
+    # en semaine 5 et l'appelle « l'étape clé » ; ici, la déclaration suffit à
+    # l'avancer.
+    declared = profile.get("difficultes") or []
+    sensitivity = ((profile.get("onboarding") or {}).get("sensibilite_total")) or 0
+    if isinstance(declared, list) and ("panique" in declared or sensitivity >= 8):
+        feared = (profile.get("onboarding") or {}).get("sensations_redoutees") or []
+        out.append(
+            {
+                "slug": "exposition-interoceptive",
+                "why": (
+                    "T'as indiqué la panique et la peur des sensations physiques comme "
+                    "difficulté principale"
+                    + (f" — notamment {', '.join(feared[:3])}" if feared else "")
+                    + ". Le traitement de référence est de provoquer ces sensations "
+                    "volontairement, en sécurité, pour que ton cerveau apprenne qu'elles "
+                    "sont désagréables et pas dangereuses. Pas la peine d'attendre huit "
+                    "semaines pour commencer."
+                ),
+                "triggered_by": [
+                    {
+                        "signal": "profil_utilisateur",
+                        "libelle": "Difficulté déclarée à l'inscription",
+                        "valeur": "panique" if "panique" in declared else f"sensibilité {sensitivity}",
+                        "methode": "réponse au questionnaire initial",
+                        "donnees": [{"sensations_redoutees": feared}] if feared else [],
+                    }
+                ],
+            }
+        )
+
+    # 8 ter. Inquiétude généralisée déclarée
+    if isinstance(declared, list) and "inquietude" in declared:
+        out.append(
+            {
+                "slug": "temps-inquietude",
+                "why": (
+                    "T'as indiqué l'inquiétude qui tourne en boucle comme difficulté "
+                    "principale. La contenir dans un créneau fixe évite qu'elle colonise "
+                    "la journée. Niveau de preuve B, et la réserve est réelle : une étude "
+                    "chez des patients diagnostiqués n'a pas retrouvé d'effet. À évaluer "
+                    "sur tes propres chiffres, pas sur la littérature."
+                ),
+                "triggered_by": [
+                    {
+                        "signal": "profil_utilisateur",
+                        "libelle": "Difficulté déclarée à l'inscription",
+                        "valeur": "inquietude",
+                        "methode": "réponse au questionnaire initial",
+                        "donnees": [],
+                    }
+                ],
+            }
+        )
+
+    # 9. Difficulté sociale déclarée à l'inscription
     social_flag = profile.get("difficultes", [])
     if isinstance(social_flag, list) and "social" in social_flag:
         out.append(
@@ -444,7 +504,11 @@ def adaptive_items(sig: dict[str, Any], profile: dict[str, Any]) -> list[dict[st
             continue
         seen.add(item["slug"])
         unique.append(item)
-    return unique[:4]
+    # Le plafond passe de 4 à 5 : les règles de profil s'ajoutent aux règles de
+    # données, et un profil qui déclare panique + social + inquiétude en produisait
+    # déjà trois à lui seul. Cinq reste tenable dans une journée ; au-delà, le
+    # programme devient une liste de courses qu'on abandonne.
+    return unique[:5]
 
 
 # --- Construction de la journée ---------------------------------------------

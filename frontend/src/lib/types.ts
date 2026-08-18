@@ -36,6 +36,7 @@ export type WidgetType =
   | 'maintenant'
   | 'panique'
   | 'prevision'
+  | 'onboarding'
 
 export type JournalEntry = {
   id?: string

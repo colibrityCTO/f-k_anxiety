@@ -48,6 +48,8 @@ WidgetType = Literal[
     "panique",
     # Charge du jour et prévision du lendemain.
     "prevision",
+    # Questionnaire initial, déposé une seule fois.
+    "onboarding",
 ]
 
 # Widgets de **consultation** : ils n'écrivent aucune donnée de santé, ils
@@ -308,6 +310,17 @@ def _maybe_weekly_analysis(user_id: str) -> None:
     )
 
 
+def _needs_onboarding(user: dict[str, Any]) -> bool:
+    """Le questionnaire est-il encore à faire ?
+
+    Lu dans le profil et non compté dans le fil : un widget `onboarding` ouvert puis
+    ignoré ne doit pas passer pour rempli, et un fil purgé ne doit pas le faire
+    réapparaître. Le profil est la seule source qui dise vraiment si c'est fait.
+    """
+    onboarding = (user.get("profile") or {}).get("onboarding") or {}
+    return not onboarding.get("done_at")
+
+
 def _expire_stale_widgets(user_id: str, today: dt.date) -> list[dict[str, Any]]:
     """Périme les widgets de saisie ouverts dont la journée est passée.
 
@@ -379,8 +392,15 @@ def get_thread(
             # Ménage avant d'écrire : sinon l'ouverture du jour arrive derrière une
             # pile de formulaires de la semaine dernière.
             _expire_stale_widgets(user_id, today)
-            _items_from_decision(user_id, chat_mod.opening(user))
-            _maybe_weekly_analysis(user_id)
+            # Le questionnaire initial passe **avant** tout le reste, et il remplace
+            # l'ouverture du jour au lieu de s'y ajouter : proposer un check-in en même
+            # temps qu'un questionnaire de trois minutes, c'est garantir qu'aucun des
+            # deux ne sera fait.
+            if _needs_onboarding(user):
+                _items_from_decision(user_id, chat_mod.onboarding_opening(user))
+            else:
+                _items_from_decision(user_id, chat_mod.opening(user))
+                _maybe_weekly_analysis(user_id)
 
     limit = max(1, min(limit, 200))
     rows = db.query_all(
@@ -2009,6 +2029,157 @@ async def _submit_maintenant(
     }
 
 
+async def _submit_onboarding(
+    user: dict[str, Any], values: dict[str, Any], background: BackgroundTasks
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Le questionnaire initial. Une validation, plusieurs écritures.
+
+    Ce que ça répare, et ce n'était pas une amélioration : `program.py` contient depuis
+    le début une règle qui lit `profile["difficultes"]` et cherche `"social"` pour
+    proposer une expérience sociale. **Personne n'écrivait jamais cette clé.** La règle
+    était morte, silencieusement — elle ne levait pas d'erreur, elle ne se déclenchait
+    simplement jamais.
+
+    Les écritures sont réparties selon la nature de la donnée, pas regroupées par
+    commodité : les échelles vont dans `assessments` (elles ont une date, une sévérité,
+    une DMCI), les objectifs dans `journal_entries` (donc dans la mémoire vectorisée),
+    le reste dans `users.profile`. Mettre le GAD-7 dans le profil aurait cassé toute la
+    logique de progression et de rémission, qui lit `assessments`.
+
+    Versionné (`version: 1`) : refaire le questionnaire écrira une version de plus, et
+    n'écrasera jamais la précédente.
+    """
+    user_id = user["id"]
+    today = dt.date.today()
+    profile = dict(user.get("profile") or {})
+
+    difficulties = [
+        d for d in (values.get("difficultes") or [])
+        if d in {"panique", "social", "inquietude", "sante", "travail", "agoraphobie", "sommeil"}
+    ]
+
+    sensitivity = values.get("sensibilite") or []
+    sensitivity_total = (
+        sum(int(v) for v in sensitivity)
+        if isinstance(sensitivity, list) and all(isinstance(v, int) for v in sensitivity)
+        else None
+    )
+
+    entry = {
+        "version": 1,
+        "done_at": str(today),
+        "anciennete": values.get("anciennete"),
+        # Le programme 12 semaines pose l'exclusion d'une cause organique comme un
+        # préalable (« le médecin a déjà confirmé »). On la enregistre plutôt que de la
+        # supposer : si la réponse est non, l'application le dit dans sa relance.
+        "medecin_ecarte": values.get("medecin_ecarte"),
+        "paniques_mois": values.get("paniques_mois"),
+        "sensations_redoutees": [str(s)[:40] for s in (values.get("sensations") or [])][:10],
+        # Trois items maison, et c'est dit à l'écran. L'ASI-3 n'est pas libre de droits
+        # (IDS Publishing, usage réservé aux professionnels qualifiés) : l'embarquer
+        # aurait été une infraction, et prétendre que ces trois items le remplacent
+        # serait faux.
+        "sensibilite_maison": sensitivity,
+        "sensibilite_total": sensitivity_total,
+        "habitudes": values.get("habitudes") or {},
+    }
+    profile["onboarding"] = entry
+    profile["difficultes"] = difficulties
+    if values.get("contre_indications_ok"):
+        # La même porte que le module 6, validée ici plutôt que huit semaines plus tard
+        # face à un bouton bloqué sans explication.
+        profile.setdefault("interoceptif_valide_le", str(today))
+    heure = str(values.get("rappel_heure") or "").strip()
+    if heure:
+        profile["rappel"] = {**(profile.get("rappel") or {}), "heure": heure}
+
+    await asyncio.to_thread(
+        db.execute,
+        "UPDATE users SET profile = %s WHERE id = %s",
+        (json.dumps(profile, ensure_ascii=False), user_id),
+    )
+
+    # --- Les échelles, par le chemin normal --------------------------------
+    scales: list[dict[str, Any]] = []
+    for instrument in ("gad7", "phq2"):
+        items = values.get(instrument)
+        meta = assessments_mod.INSTRUMENTS.get(instrument)
+        if meta is None or not isinstance(items, list) or len(items) != len(meta["items"]):
+            continue
+        if any(not isinstance(i, int) or i < 0 or i > 3 for i in items):
+            continue
+        total = sum(items)
+        severity = assessments_mod._severity(instrument, total)  # noqa: SLF001
+        row = await asyncio.to_thread(
+            db.execute_returning,
+            """
+            INSERT INTO assessments (user_id, instrument, taken_on, items, total, severity)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, instrument, taken_on) DO UPDATE SET
+                items = EXCLUDED.items, total = EXCLUDED.total, severity = EXCLUDED.severity
+            RETURNING id::text, instrument, total, severity
+            """,
+            (user_id, instrument, today, items, total, severity),
+        )
+        if row:
+            scales.append(dict(row))
+            background.add_task(
+                memory.remember, user_id, "assessment", row["id"],
+                f"{meta['title']} du {today} — {total}/{meta['scoring']['range'][1]} ({severity})",
+                today, {"instrument": instrument},
+            )
+
+    # --- L'objectif, en clair et dans la mémoire --------------------------
+    goal = str(values.get("objectif") or "").strip()
+    if goal:
+        journal = await asyncio.to_thread(
+            db.execute_returning,
+            """
+            INSERT INTO journal_entries (user_id, entry_date, kind, free_text)
+            VALUES (%s, %s, 'libre', %s) RETURNING id::text
+            """,
+            (user_id, today, f"Ce que l'anxiété m'empêche de faire : {goal}"),
+        )
+        if journal:
+            background.add_task(
+                memory.remember, user_id, "journal", journal["id"],
+                f"Objectif déclaré à l'inscription ({today}) — {goal}", today,
+                {"kind": "objectif"},
+            )
+    await asyncio.to_thread(_log_activity, user_id, "objectifs-valeurs", today)
+
+    # --- La relance : ce que ces réponses changent concrètement ------------
+    gad = next((s for s in scales if s["instrument"] == "gad7"), None)
+    bits: list[str] = []
+    if gad:
+        bits.append(
+            f"GAD-7 de départ : **{gad['total']}/21** ({gad['severity']}). C'est ta ligne "
+            "de base — sans elle, impossible de dire plus tard si quelque chose a marché."
+        )
+    if difficulties:
+        bits.append(f"Difficultés retenues : {', '.join(difficulties)}.")
+    if "panique" in difficulties:
+        bits.append(
+            "Comme la panique est en tête, le programme avancera les exercices sur les "
+            "sensations — c'est le traitement de référence de la peur des sensations "
+            "corporelles, et il n'y a pas de raison de l'attendre huit semaines."
+        )
+    if values.get("medecin_ecarte") is False:
+        bits.append(
+            "Tu as répondu qu'aucun médecin n'a écarté de cause organique. C'est le "
+            "préalable de tout le reste : des symptômes physiques méritent d'être vus "
+            "une fois par un médecin avant d'être traités comme de l'anxiété."
+        )
+    bits.append("On commence demain matin. Rien d'autre à faire aujourd'hui.")
+
+    return entry, {
+        "reply": " ".join(bits),
+        "widget": None,
+        "suggestions": ["Mes chiffres", "Comment je me sens là"],
+        "engine": "local",
+    }
+
+
 def _log_activity(user_id: str, slug: str, day: dt.date) -> None:
     """Marque une activité du programme comme faite pour ce jour-là."""
     db.execute(
@@ -2035,6 +2206,7 @@ _HANDLERS = {
     # V3
     "interoceptif": _submit_interoceptif,
     # V5
+    "onboarding": _submit_onboarding,
     "matin": _submit_matin,
     "soir": _submit_soir,
     "maintenant": _submit_maintenant,

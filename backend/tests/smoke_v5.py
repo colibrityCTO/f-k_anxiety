@@ -30,6 +30,27 @@ from fastapi.testclient import TestClient
 from app import db
 from app.main import app
 
+def _skip_onboarding(user_id: str) -> None:
+    """Marque le questionnaire initial comme rempli.
+
+    Ces tests portent sur l'ouverture proactive et la capture de texte libre, pas sur
+    le questionnaire — qui a sa propre suite (`smoke_v5_onboarding.py`). Sans ce
+    court-circuit, la première ouverture du fil dépose le questionnaire **à la place**
+    de l'ouverture du jour, ce qui est le comportement voulu mais rend ces tests
+    inopérants.
+    """
+    db.execute(
+        """
+        UPDATE users
+        SET profile = profile || jsonb_build_object(
+            'onboarding', jsonb_build_object('version', 1, 'done_at', CURRENT_DATE::text)
+        )
+        WHERE id = %s
+        """,
+        (user_id,),
+    )
+
+
 FAILURES: list[str] = []
 
 
@@ -56,6 +77,7 @@ with TestClient(app) as client:
     ).json()
     h = {"Authorization": f"Bearer {auth['access_token']}"}
     user_id = auth["user"]["id"]
+    _skip_onboarding(user_id)
     today = dt.date.today()
     print(f"[OK ] compte créé : {email}")
 

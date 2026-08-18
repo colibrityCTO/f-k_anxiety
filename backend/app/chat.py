@@ -41,6 +41,9 @@ WIDGET_TYPES = {
     "panique",
     # Charge du jour et prévision : une consultation, elle n'écrit rien.
     "prevision",
+    # Questionnaire initial. Le modèle ne l'ouvre jamais : il est déposé une fois,
+    # à la première ouverture du fil, et il n'y a pas de raison d'y revenir.
+    "onboarding",
 }
 
 # Séparateur entre la prose et la décision structurée. Ce format rend le
@@ -816,6 +819,31 @@ def _intense_session_yesterday(user_id: str) -> dict[str, Any] | None:
         "suggestions": ["Rien de spécial", "Ça a été dur"],
         "citations": [],
         "engine": "bracelet",
+    }
+
+
+def onboarding_opening(user: dict[str, Any]) -> dict[str, Any]:
+    """Le tout premier message. Il annonce le coût et ce que ça change.
+
+    « Trois minutes » est dit parce que c'est vrai et parce que ne pas le dire fait
+    abandonner au troisième écran. Et la raison est donnée avant les questions : un
+    questionnaire dont on ne sait pas à quoi il sert se remplit mal, ou pas.
+    """
+    name = (user.get("display_name") or "").strip()
+    hello = f"Salut {name}." if name else "Salut."
+    return {
+        "reply": (
+            f"{hello} Avant de commencer : trois minutes de questions, une fois.\n\n"
+            "Ça sert à deux choses concrètes. **Adapter le programme** — si la panique "
+            "est ta difficulté principale, les exercices sur les sensations arrivent tôt "
+            "au lieu d'attendre huit semaines. Et **poser une ligne de base chiffrée** : "
+            "sans elle, impossible de dire dans six semaines si quelque chose a marché, "
+            "parce que la mémoire sous anxiété ne retient que les pires moments."
+        ),
+        "widget": {"type": "onboarding", "prefill": {}, "a_verifier": []},
+        "suggestions": [],
+        "citations": [],
+        "engine": "local",
     }
 
 

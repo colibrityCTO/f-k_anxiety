@@ -12,6 +12,7 @@ import Logout from '../widgets/Logout'
 import Maintenant from '../widgets/Maintenant'
 import Matin from '../widgets/Matin'
 import Meditation from '../widgets/Meditation'
+import Onboarding from '../widgets/Onboarding'
 import Panique from '../widgets/Panique'
 import Prevision from '../widgets/Prevision'
 import Memoire from '../widgets/Memoire'
@@ -33,6 +34,7 @@ const META: Record<WidgetType, { title: string; tag: string }> = {
   maintenant: { title: 'Là, maintenant', tag: 'Un chiffre' },
   panique: { title: 'Épisode', tag: 'C’est passé' },
   prevision: { title: 'Demain', tag: 'Charge et fourchette' },
+  onboarding: { title: 'Pour commencer', tag: 'Une fois · 3 min' },
   checkin: { title: 'Check-in du jour', tag: 'Saisie · 2 min' },
   breath: { title: 'Respiration lente', tag: '5 min · ~6 cycles/min' },
   journal: { title: 'Journal', tag: 'Saisie' },
@@ -56,6 +58,7 @@ const BODIES: Record<WidgetType, (props: WidgetProps) => JSX.Element> = {
   maintenant: Maintenant,
   panique: Panique,
   prevision: Prevision,
+  onboarding: Onboarding,
   checkin: Checkin,
   breath: Breath,
   journal: Journal,
@@ -89,6 +92,13 @@ function summarise(item: ThreadItem): { label: string; value: string }[] {
           : saved.redoute_arrive === true
             ? [{ label: 'Redouté', value: 'arrivé' }]
             : []),
+      ]
+    case 'onboarding':
+      return [
+        ...(Array.isArray(saved.difficultes) && saved.difficultes.length
+          ? [{ label: 'Difficultés', value: (saved.difficultes as string[]).join(', ') }]
+          : []),
+        ...(saved.anciennete ? [{ label: 'Depuis', value: String(saved.anciennete) }] : []),
       ]
     case 'maintenant':
       return [
