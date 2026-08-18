@@ -28,6 +28,27 @@ from fastapi.testclient import TestClient
 from app import db, program
 from app.main import app
 
+def _reset_opening(user_id, today) -> None:
+    """Remet le fil dans l'état « rien déposé aujourd'hui ».
+
+    Deux effacements, parce qu'il y a deux mécanismes depuis la V5 : les items du fil,
+    et le **verrou de créneau** dans `notification_log`. Depuis que l'ouverture est
+    déposée une fois par créneau (matin / midi / soir) plutôt qu'une fois par jour, la
+    présence d'un item ne fait plus office de verrou — purger le fil seul ne provoque
+    donc plus de nouvelle ouverture, et c'est exactement le but du verrou.
+    """
+    db.execute(
+        "DELETE FROM thread_items WHERE user_id = %s AND role = 'assistant' "
+        "AND created_at::date = %s",
+        (user_id, today),
+    )
+    db.execute(
+        "DELETE FROM notification_log WHERE user_id = %s AND kind LIKE 'ouverture_%%' "
+        "AND sent_on = %s",
+        (user_id, today),
+    )
+
+
 FAILURES: list[str] = []
 
 
@@ -219,10 +240,7 @@ with TestClient(app) as client:
     )
 
     # --- 3 bis. Plus jamais proposé ---------------------------------------
-    db.execute(
-        "DELETE FROM thread_items WHERE user_id = %s AND role = 'assistant' AND created_at::date = %s",
-        (user_id, today),
-    )
+    _reset_opening(user_id, today)
     again = client.get("/chat/thread", headers=h).json()
     types = [i.get("widget_type") for i in again["items"] if i["kind"] == "widget"]
     check(

@@ -44,6 +44,9 @@ WIDGET_TYPES = {
     # Questionnaire initial. Le modèle ne l'ouvre jamais : il est déposé une fois,
     # à la première ouverture du fil, et il n'y a pas de raison d'y revenir.
     "onboarding",
+    # Le parcours du jour. Le modèle peut l'ouvrir : « qu'est-ce que je dois faire
+    # aujourd'hui » est une demande légitime.
+    "jour",
 }
 
 # Séparateur entre la prose et la décision structurée. Ce format rend le
@@ -86,6 +89,7 @@ WIDGETS QUE TU PEUX OUVRIR
 - interoceptif: exposition intéroceptive guidée (hyperventilation, apnée, rotation…) pour la peur des sensations physiques
 - meditation  : pratique guidée (souffle, scan corporel, conscience émotionnelle, relaxation)
 - rapport     : synthèse imprimable pour un professionnel
+- jour        : le parcours du jour — socle, module de la semaine, et ce que ses données ont déclenché
 - prevision   : la charge du jour, la fourchette prévue pour demain, et la fiabilité réelle du modèle
 - stats       : ses chiffres et ses courbes
 - analysis    : analyse de la période avec ses sources
@@ -415,6 +419,12 @@ def _deterministic(
             "widget": {"type": "breath", "prefill": {}, "a_verifier": []},
             "suggestions": [],
         }
+    if "jour" in intents:
+        return {
+            "reply": "Voilà ce que le programme propose aujourd'hui, et pourquoi.",
+            "widget": {"type": "jour", "prefill": {}, "a_verifier": []},
+            "suggestions": [],
+        }
     if "prevision" in intents:
         return {
             "reply": (
@@ -631,36 +641,10 @@ def _hold_back(buffer: str) -> str:
     return buffer
 
 
-# Quel widget ouvre une activité du programme. `None` est un choix, pas un oubli :
-# régularité du sommeil, activité physique et caféine sont des recommandations
-# d'hygiène, pas des exercices à minuter. Le message porte le conseil et ses
-# preuves, et aucun widget ne s'ouvre — c'est le « conseil » du parcours quotidien.
-SLUG_WIDGETS: dict[str, str | None] = {
-    "checkin-quotidien": "checkin",
-    "respiration-lente-10": "breath",
-    "soupir-physiologique": "breath",
-    "journal-libre": "journal",
-    "journal-pensees": "journal",
-    "temps-inquietude": "journal",
-    "resolution-problemes": "journal",
-    "inventaire-securite": "journal",
-    "objectifs-valeurs": "journal",
-    "plan-prevention-rechute": "journal",
-    "psychoeducation-cycle": "journal",
-    "meditation-souffle": "meditation",
-    "scan-corporel": "meditation",
-    "conscience-emotionnelle": "meditation",
-    "relaxation-musculaire": "meditation",
-    "exposition-interoceptive": "interoceptif",
-    "echelle-exposition": "exposition",
-    "exposition-in-vivo": "exposition",
-    "experience-sociale": "exposition",
-    "exposition-imaginaire": "exposition",
-    "gad7-hebdo": "echelles",
-    "regularite-sommeil": None,
-    "activite-physique": None,
-    "reduction-cafeine": None,
-}
+# La table activité → widget vit dans `program.py`, où `build_day` en a besoin pour
+# que chaque item du jour sache ce qu'il ouvre. Deux copies auraient fini par
+# diverger, et c'est le genre de divergence qui ne lève aucune erreur.
+SLUG_WIDGETS = program.SLUG_WIDGETS
 
 
 def _citation_for(item: dict[str, Any]) -> dict[str, Any]:
@@ -745,7 +729,37 @@ def _todays_proposal(user: dict[str, Any], today: dt.date) -> dict[str, Any] | N
     return None
 
 
-# Bornes des deux créneaux. Avant midi, c'est le matin ; à partir de 17 h, le soir.
+# Les trois créneaux d'ouverture proactive. Un dépôt par créneau, au plus.
+#
+# Pourquoi trois et pas un : avec un seul dépôt par jour, ouvrir l'application à 9 h
+# consommait l'unique message, et revenir à 20 h ne proposait plus rien — alors que
+# c'est le soir que la journée se raconte.
+#
+# Pourquoi pas plus : les invites contextuelles tiennent l'engagement, mais l'adhésion
+# se dégrade vite (90 % d'usage en semaine 3, 59 % en semaine 6 dans un essai à
+# randomisation micro). Trois est un plafond, pas une cible — et le créneau du milieu
+# de journée ne demande rien à remplir, il pose une question.
+SLOTS: list[tuple[str, int, int]] = [
+    ("matin", 5, 12),
+    ("midi", 12, 17),
+    ("soir", 17, 24),
+]
+
+
+def slot_for(now: dt.datetime | None = None) -> str | None:
+    """Dans quel créneau on se trouve, ou `None` la nuit (0 h - 5 h).
+
+    La nuit ne déclenche rien : quelqu'un qui ouvre l'application à 3 h n'a pas besoin
+    d'une question sur sa journée, et le créneau du matin l'attendra au réveil.
+    """
+    hour = (now or dt.datetime.now()).hour
+    for name, low, high in SLOTS:
+        if low <= hour < high:
+            return name
+    return None
+
+
+# Bornes des deux créneaux de saisie. Avant midi, c'est le matin ; à partir de 17 h, le soir.
 # Entre les deux, on ne réclame rien de neuf : on rattrape ce qui manque, en
 # commençant par le matin — sa question porte sur la nuit, elle reste répondable.
 MORNING_UNTIL = 12
@@ -822,6 +836,41 @@ def _intense_session_yesterday(user_id: str) -> dict[str, Any] | None:
     }
 
 
+# --- La question du milieu de journée ---------------------------------------
+#
+# Liste fermée, tirée de façon **déterministe** : même jour, même question. Pas de
+# modèle de langage, et c'est un choix, pas une économie. Une question générée serait
+# différente à chaque rechargement, donc impossible à reprendre, et rien ne
+# garantirait qu'elle reste dans le cadre — alors que le tirage, lui, est vérifiable.
+#
+# Chacune est rattachée à un module : on ne demande pas à quelqu'un en semaine 2 ce
+# qu'il a appris de sa dernière exposition. `None` signifie « valable partout ».
+MIDDAY_QUESTIONS: list[dict[str, Any]] = [
+    {"module": None, "q": "Qu'est-ce que tu as évité aujourd'hui, même une petite chose ?"},
+    {"module": None, "q": "À quel moment ça a été le pire, et qu'est-ce qui se passait juste avant ?"},
+    {"module": None, "q": "Qu'est-ce que tu as fait aujourd'hui qui compte pour toi, même en étant anxieux ?"},
+    {"module": None, "q": "Si un ami te racontait ta matinée, tu lui dirais quoi ?"},
+    {"module": 2, "q": "Là, tu peux repérer les trois composantes : la pensée, la sensation, le comportement ?"},
+    {"module": 3, "q": "Quelle sensation physique est la plus présente en ce moment ?"},
+    {"module": 4, "q": "Quelle pensée tourne le plus aujourd'hui, et tu y crois à combien sur 100 ?"},
+    {"module": 4, "q": "Le pire scénario du moment : c'est déjà arrivé, une seule fois ?"},
+    {"module": 5, "q": "Quel geste tu as fait aujourd'hui pour te rassurer, sans en avoir besoin ?"},
+    {"module": 6, "q": "Les sensations que tu redoutes : lesquelles as-tu senties aujourd'hui, sans crise ?"},
+    {"module": 7, "q": "Qu'est-ce que tu as appris de ta dernière exposition, que tu ne savais pas avant ?"},
+    {"module": 8, "q": "Qu'est-ce qui, si tu l'arrêtais, te ferait rechuter en premier ?"},
+]
+
+
+def midday_question(module: int, day: dt.date) -> str:
+    """Tire la question du jour. Stable dans la journée, différente le lendemain.
+
+    Le tirage combine la date et le module : recharger l'application ne change pas la
+    question — sinon on ne pourrait pas y revenir après l'avoir laissée de côté.
+    """
+    pool = [q["q"] for q in MIDDAY_QUESTIONS if q["module"] in (None, module)]
+    return pool[day.toordinal() % len(pool)]
+
+
 def onboarding_opening(user: dict[str, Any]) -> dict[str, Any]:
     """Le tout premier message. Il annonce le coût et ce que ça change.
 
@@ -844,6 +893,37 @@ def onboarding_opening(user: dict[str, Any]) -> dict[str, Any]:
         "suggestions": [],
         "citations": [],
         "engine": "local",
+    }
+
+
+def opening_for_slot(user: dict[str, Any], slot: str) -> dict[str, Any]:
+    """L'ouverture du créneau. Trois régimes distincts, pas trois variantes du même.
+
+    - **matin** et **soir** proposent une saisie : c'est `opening()`, qui choisit déjà
+      le moment dû et sait quoi dire quand tout est à jour.
+    - **midi** ne demande rien à remplir. C'est une question, et une seule. Réclamer un
+      troisième formulaire en milieu de journée aurait fait abandonner les deux autres.
+    """
+    if slot != "midi":
+        return opening(user)
+
+    state = day_state(user["id"])
+    today = dt.date.today()
+    question = midday_question(state["module"], today)
+
+    # Le journal libre est proposé pour recueillir la réponse : elle ira en mémoire
+    # vectorisée, donc elle sera retrouvable des mois plus tard. Une question posée
+    # sans endroit pour répondre est une question perdue.
+    return {
+        "reply": question,
+        "widget": {
+            "type": "journal",
+            "prefill": {"situation": question},
+            "a_verifier": [],
+        },
+        "suggestions": ["Rien à signaler", "Comment je me sens là"],
+        "citations": [],
+        "engine": "question-du-jour",
     }
 
 

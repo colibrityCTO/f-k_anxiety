@@ -30,6 +30,27 @@ from fastapi.testclient import TestClient
 from app import db
 from app.main import app
 
+def _reset_opening(user_id, today) -> None:
+    """Remet le fil dans l'état « rien déposé aujourd'hui ».
+
+    Deux effacements, parce qu'il y a deux mécanismes depuis la V5 : les items du fil,
+    et le **verrou de créneau** dans `notification_log`. Depuis que l'ouverture est
+    déposée une fois par créneau (matin / midi / soir) plutôt qu'une fois par jour, la
+    présence d'un item ne fait plus office de verrou — purger le fil seul ne provoque
+    donc plus de nouvelle ouverture, et c'est exactement le but du verrou.
+    """
+    db.execute(
+        "DELETE FROM thread_items WHERE user_id = %s AND role = 'assistant' "
+        "AND created_at::date = %s",
+        (user_id, today),
+    )
+    db.execute(
+        "DELETE FROM notification_log WHERE user_id = %s AND kind LIKE 'ouverture_%%' "
+        "AND sent_on = %s",
+        (user_id, today),
+    )
+
+
 def _skip_onboarding(user_id: str) -> None:
     """Marque le questionnaire initial comme rempli.
 
@@ -195,10 +216,7 @@ with TestClient(app) as client:
         """,
         (user_id,),
     )
-    db.execute(
-        "DELETE FROM thread_items WHERE user_id = %s AND role = 'assistant' AND created_at::date = %s",
-        (user_id, today),
-    )
+    _reset_opening(user_id, today)
     thread(client, h)  # première page → ménage + ouverture du jour
     stale = db.query_all(
         """
@@ -269,10 +287,7 @@ with TestClient(app) as client:
             """,
             (user_id, day, 6 + (offset % 3), 5.0 + (offset % 4) * 0.5),
         )
-    db.execute(
-        "DELETE FROM thread_items WHERE user_id = %s AND role = 'assistant' AND created_at::date = %s",
-        (user_id, today),
-    )
+    _reset_opening(user_id, today)
     reopened = thread(client, h)
     # L'ouverture n'est pas forcément le dernier message : la proposition de bilan
     # hebdomadaire est déposée juste après elle.

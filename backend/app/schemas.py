@@ -231,6 +231,9 @@ class ExposureItemOut(ExposureItemIn):
 class ProgramItem(BaseModel):
     activity: ActivityOut
     slot: Literal["socle", "module", "adaptatif"]
+    # Le widget que cet item ouvre, ou `null` s'il n'y a rien à ouvrir (conseil
+    # d'hygiène). Sans ce champ, le parcours du jour serait une liste à lire.
+    widget: str | None = None
     # Le « pourquoi pour vous » : la raison personnalisée, avec ses données.
     why_for_you: str
     triggered_by: list[dict[str, Any]] = Field(default_factory=list)

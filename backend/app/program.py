@@ -131,6 +131,42 @@ MODULES: list[dict[str, Any]] = [
 ]
 
 
+# Quel widget ouvre une activité du programme. `None` est un choix, pas un oubli :
+# régularité du sommeil, activité physique et caféine sont des recommandations
+# d'hygiène, pas des exercices à minuter. Le message porte le conseil et ses preuves,
+# et aucun widget ne s'ouvre.
+#
+# Vit ici et non dans `chat.py` parce que `build_day` en a besoin : chaque item du jour
+# doit pouvoir dire ce qu'il ouvre, sinon le parcours du jour ne serait qu'une liste à
+# lire. `chat.py` l'importe.
+SLUG_WIDGETS: dict[str, str | None] = {
+    "checkin-quotidien": "soir",
+    "respiration-lente-10": "breath",
+    "soupir-physiologique": "breath",
+    "journal-libre": "journal",
+    "journal-pensees": "journal",
+    "temps-inquietude": "journal",
+    "resolution-problemes": "journal",
+    "inventaire-securite": "journal",
+    "objectifs-valeurs": "journal",
+    "plan-prevention-rechute": "journal",
+    "psychoeducation-cycle": "journal",
+    "meditation-souffle": "meditation",
+    "scan-corporel": "meditation",
+    "conscience-emotionnelle": "meditation",
+    "relaxation-musculaire": "meditation",
+    "exposition-interoceptive": "interoceptif",
+    "echelle-exposition": "exposition",
+    "exposition-in-vivo": "exposition",
+    "experience-sociale": "exposition",
+    "exposition-imaginaire": "exposition",
+    "gad7-hebdo": "echelles",
+    "regularite-sommeil": None,
+    "activite-physique": None,
+    "reduction-cafeine": None,
+}
+
+
 def module_for_week(week: int) -> dict[str, Any]:
     for module in MODULES:
         low, high = module["weeks"]
@@ -582,6 +618,9 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
             {
                 "activity": activity,
                 "slot": slot,
+                # Ce que l'item ouvre, ou `null` pour un conseil d'hygiène : le parcours
+                # du jour doit être actionnable, pas seulement lisible.
+                "widget": SLUG_WIDGETS.get(slug),
                 "why_for_you": why,
                 "triggered_by": triggered_by,
                 "status": log["status"] if log else None,

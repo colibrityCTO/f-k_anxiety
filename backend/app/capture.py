@@ -119,6 +119,15 @@ INTENT_PATTERNS: list[tuple[str, str]] = [
     ("gad7", r"\bgad\b|echelle|questionnaire|test\s*d.?\s*anxiete|score"),
     ("sources", r"pourquoi|d.?\s*ou\s*(?:ca\s*)?(?:sort|vient)|preuve|etude|source|comment\s*ca\s*marche"),
     ("journal", r"journal|noter|ecrire|raconter"),
+    (
+        "jour",
+        # `[\s-]*` et non `\s*` : la normalisation retire les accents et met en
+        # minuscules, mais elle **garde les tirets** — « qu'est-ce que » ne matchait
+        # donc pas un motif qui n'attendait que des espaces.
+        r"mon[\s-]*parcours|programme\s*du\s*jour|quoi\s*faire|"
+        r"qu.?[\s-]*est[\s-]*ce[\s-]*que\s*je\s*dois|"
+        r"mes?\s*(?:exercices?|activites?)\s*(?:du\s*jour|aujourd)",
+    ),
     ("checkin", r"check\s*-?\s*in|renseigner|ma\s*journee"),
     # « comment je me sens là » : une mesure instantanée, pas un bilan de journée.
     # Placé après `checkin` mais avant les autres : « là, maintenant » est explicite.

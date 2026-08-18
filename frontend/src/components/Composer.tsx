@@ -10,6 +10,7 @@ import type { DayState, WidgetType } from '../lib/types'
  * poussé par l'application — c'est sa seule porte d'entrée, et c'est voulu.
  */
 const TILES: { type: WidgetType; name: string; icon: string }[] = [
+  { type: 'jour', name: 'Mon parcours', icon: 'checkin' },
   { type: 'maintenant', name: 'Là, maintenant', icon: 'checkin' },
   { type: 'matin', name: 'Ce matin', icon: 'checkin' },
   { type: 'soir', name: 'Ce soir', icon: 'checkin' },

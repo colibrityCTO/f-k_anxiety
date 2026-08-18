@@ -7,6 +7,7 @@ import Checkin from '../widgets/Checkin'
 import Echelles from '../widgets/Echelles'
 import Exposition from '../widgets/Exposition'
 import Interoceptif from '../widgets/Interoceptif'
+import Jour from '../widgets/Jour'
 import Journal from '../widgets/Journal'
 import Logout from '../widgets/Logout'
 import Maintenant from '../widgets/Maintenant'
@@ -26,6 +27,12 @@ export type WidgetProps = {
   busy: boolean
   onSubmit: (values: Record<string, unknown>) => Promise<void> | void
   onSkip: () => Promise<void> | void
+  /**
+   * Ouvrir un autre widget depuis celui-ci. Optionnel parce qu'un seul en a besoin —
+   * le parcours du jour, dont chaque ligne mène à l'exercice correspondant. Sans lui,
+   * le parcours serait une liste à lire et rien d'autre.
+   */
+  onOpen?: (type: WidgetType, label?: string) => void
 }
 
 const META: Record<WidgetType, { title: string; tag: string }> = {
@@ -35,6 +42,7 @@ const META: Record<WidgetType, { title: string; tag: string }> = {
   panique: { title: 'Épisode', tag: 'C’est passé' },
   prevision: { title: 'Demain', tag: 'Charge et fourchette' },
   onboarding: { title: 'Pour commencer', tag: 'Une fois · 3 min' },
+  jour: { title: 'Mon parcours', tag: 'Aujourd’hui' },
   checkin: { title: 'Check-in du jour', tag: 'Saisie · 2 min' },
   breath: { title: 'Respiration lente', tag: '5 min · ~6 cycles/min' },
   journal: { title: 'Journal', tag: 'Saisie' },
@@ -59,6 +67,7 @@ const BODIES: Record<WidgetType, (props: WidgetProps) => JSX.Element> = {
   panique: Panique,
   prevision: Prevision,
   onboarding: Onboarding,
+  jour: Jour,
   checkin: Checkin,
   breath: Breath,
   journal: Journal,
@@ -265,7 +274,15 @@ export default function WidgetHost({
   return (
     <div className={`w${open ? '' : ' w-shut'}`}>
       {head}
-      {open && <Body item={item} busy={busy} onSubmit={onSubmit} onSkip={onSkip} />}
+      {open && (
+        <Body
+          item={item}
+          busy={busy}
+          onSubmit={onSubmit}
+          onSkip={onSkip}
+          onOpen={onOpen}
+        />
+      )}
     </div>
   )
 }

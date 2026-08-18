@@ -50,6 +50,8 @@ WidgetType = Literal[
     "prevision",
     # Questionnaire initial, déposé une seule fois.
     "onboarding",
+    # Le parcours du jour : une lecture, elle n'écrit rien.
+    "jour",
 ]
 
 # Widgets de **consultation** : ils n'écrivent aucune donnée de santé, ils
@@ -62,7 +64,7 @@ WidgetType = Literal[
 EPHEMERAL_WIDGETS = frozenset(
     {
         "stats", "analysis", "sources", "memoire", "rapport", "account", "logout",
-        "prevision",
+        "prevision", "jour",
     }
 )
 
@@ -310,6 +312,62 @@ def _maybe_weekly_analysis(user_id: str) -> None:
     )
 
 
+def _open_slot(user: dict[str, Any], today: dt.date) -> None:
+    """Dépose l'ouverture du créneau en cours, une fois par créneau et par jour.
+
+    Ce qui change par rapport à la V4 : le dépôt était **une fois par jour**. Ouvrir
+    l'application à 9 h consommait l'unique message, et revenir à 20 h ne proposait plus
+    rien — alors que c'est le soir que la journée se raconte.
+
+    L'idempotence passe par `notification_log`, qui porte déjà la contrainte d'unicité
+    `(user_id, kind, sent_on)`. L'insertion sert de verrou : si elle ne touche aucune
+    ligne, un autre appel concurrent est passé avant, et on ne dépose pas deux fois.
+    C'est la même mécanique que les rappels push — inventer un second mécanisme aurait
+    créé un second endroit où se tromper.
+    """
+    user_id = user["id"]
+
+    # Le questionnaire initial passe **avant** tout le reste, et remplace l'ouverture
+    # au lieu de s'y ajouter : proposer un check-in en même temps qu'un questionnaire de
+    # trois minutes, c'est garantir qu'aucun des deux ne sera fait. Pas de verrou de
+    # créneau ici — tant qu'il n'est pas rempli, il est reproposé chaque jour, et
+    # `_expire_stale_widgets` périme celui de la veille.
+    if _needs_onboarding(user):
+        already = db.query_one(
+            """
+            SELECT 1 FROM thread_items
+            WHERE user_id = %s AND role = 'assistant' AND created_at::date = %s LIMIT 1
+            """,
+            (user_id, today),
+        )
+        if already is None:
+            _expire_stale_widgets(user_id, today)
+            _items_from_decision(user_id, chat_mod.onboarding_opening(user))
+        return
+
+    slot = chat_mod.slot_for()
+    if slot is None:
+        return  # la nuit, on ne dépose rien : le créneau du matin attendra le réveil
+
+    claimed = db.execute(
+        """
+        INSERT INTO notification_log (user_id, kind, sent_on, detail)
+        VALUES (%s, %s, %s, '{}'::jsonb)
+        ON CONFLICT (user_id, kind, sent_on) DO NOTHING
+        """,
+        (user_id, f"ouverture_{slot}", today),
+    )
+    if not claimed:
+        return  # ce créneau a déjà parlé aujourd'hui
+
+    # Ménage avant d'écrire, et seulement au premier créneau de la journée : sinon
+    # l'ouverture arrive derrière une pile de formulaires de la semaine dernière.
+    _expire_stale_widgets(user_id, today)
+    _items_from_decision(user_id, chat_mod.opening_for_slot(user, slot))
+    if slot != "midi":
+        _maybe_weekly_analysis(user_id)
+
+
 def _needs_onboarding(user: dict[str, Any]) -> bool:
     """Le questionnaire est-il encore à faire ?
 
@@ -380,27 +438,7 @@ def get_thread(
     today = dt.date.today()
 
     if before is None:
-        already = db.query_one(
-            """
-            SELECT 1 FROM thread_items
-            WHERE user_id = %s AND role = 'assistant' AND created_at::date = %s
-            LIMIT 1
-            """,
-            (user_id, today),
-        )
-        if already is None:
-            # Ménage avant d'écrire : sinon l'ouverture du jour arrive derrière une
-            # pile de formulaires de la semaine dernière.
-            _expire_stale_widgets(user_id, today)
-            # Le questionnaire initial passe **avant** tout le reste, et il remplace
-            # l'ouverture du jour au lieu de s'y ajouter : proposer un check-in en même
-            # temps qu'un questionnaire de trois minutes, c'est garantir qu'aucun des
-            # deux ne sera fait.
-            if _needs_onboarding(user):
-                _items_from_decision(user_id, chat_mod.onboarding_opening(user))
-            else:
-                _items_from_decision(user_id, chat_mod.opening(user))
-                _maybe_weekly_analysis(user_id)
+        _open_slot(user, today)
 
     limit = max(1, min(limit, 200))
     rows = db.query_all(

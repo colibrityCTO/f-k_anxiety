@@ -1116,6 +1116,39 @@ th {
   letter-spacing: 0.12em;
 }
 
+/* Une ligne du parcours du jour. Encadrée, parce que chacune porte sa propre
+   justification et son bouton : sans cadre, huit items forment un mur de texte. */
+.plan {
+  border: var(--b) solid currentColor;
+  padding: var(--g2);
+  margin: var(--g1) 0 var(--g2);
+}
+/* Fait : atténué, pas barré. Un item réalisé reste consultable — c'est là qu'on
+   retrouve pourquoi il avait été proposé. */
+.plan-done {
+  opacity: 0.55;
+}
+.plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--g1);
+  margin-bottom: 6px;
+}
+/* Un bouton qui se lit comme un lien : « pourquoi », au fil du texte. Un vrai
+   bouton encadré casserait la phrase. */
+.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
 /* ===========================================================================
    PAGE COMPTE
    La seule page de l'application avec l'écran de crise. Superposée au fil, qui

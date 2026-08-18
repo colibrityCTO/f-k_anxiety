@@ -37,6 +37,7 @@ export type WidgetType =
   | 'panique'
   | 'prevision'
   | 'onboarding'
+  | 'jour'
 
 export type JournalEntry = {
   id?: string
@@ -466,6 +467,34 @@ export type Activity = {
   instructions: string[]
   contraindications?: string | null
   kb_doc_id?: string | null
+}
+
+/** Un item du parcours du jour, tel que `build_day()` le calcule. */
+export type ProgramDayItem = {
+  activity: Activity
+  slot: 'socle' | 'module' | 'adaptatif'
+  /** La justification personnalisée, avec les chiffres de la personne. */
+  why_for_you: string
+  /** Les observations exactes qui ont déclenché l'item — le panneau « d'où ça sort ». */
+  triggered_by: Record<string, unknown>[]
+  status?: 'fait' | 'partiel' | 'pas_fait' | 'reporte' | null
+  /** Le widget que l'item ouvre, ou `null` pour un conseil d'hygiène. */
+  widget?: string | null
+}
+
+export type ProgramDay = {
+  entry_date: string
+  week: number
+  module: number
+  module_title: string
+  module_goal: string
+  phase_explainer: string
+  items: ProgramDayItem[]
+  checkin_done: boolean
+  adherence_7j: number
+  streak: number
+  gad7_due: boolean
+  notices: string[]
 }
 
 export type KbDoc = {

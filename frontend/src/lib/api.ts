@@ -10,6 +10,7 @@ import type {
   KbDocDetail,
   ForecastPayload,
   Integrations,
+  ProgramDay,
   PanicContext,
   PanicEpisodeIn,
   PushKey,
@@ -141,6 +142,8 @@ export const api = {
   report: (days = 90) => get<ReportPayload>(`/chat/rapport?days=${days}`),
   instruments: () => get<{ instruments: Instrument[] }>('/assessments/instruments'),
   history: (days = 30) => get<HistoryPayload>(`/program/history?days=${days}`),
+  /** Le parcours du jour : socle, module de la semaine, et items adaptatifs. */
+  programDay: () => get<ProgramDay>('/program/today'),
   activity: (slug: string) => get<Activity>(`/activities/${slug}`),
   knowledge: () => get<KbDoc[]>('/knowledge'),
   knowledgeDoc: (docId: string) => get<KbDocDetail>(`/knowledge/${docId}`),
