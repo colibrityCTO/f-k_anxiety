@@ -73,6 +73,8 @@ fuck_anxiety/
 │   ├── knowledge/               21 fiches sourcées = corpus de preuve
 │   └── tests/                   smoke_chat.py, smoke_v2.py, smoke_v3.py, smoke_e2e.py, seed_demo.py
 ├── frontend/
+│   ├── Dockerfile              build en deux étapes, image finale sans outillage
+│   ├── server.mjs              serveur statique + relais /api (zéro dépendance)
 │   ├── src/
 │   │   ├── screens/Auth.tsx     le seul écran hors du fil
 │   │   ├── screens/Chat.tsx     le fil
@@ -176,8 +178,9 @@ navigateur, dite dans l'interface plutôt que masquée.
 | `ALLOW_REGISTRATION` | `false` verrouille l'instance après création du compte | true |
 | `AUTO_INGEST` | ingestion du corpus au premier démarrage | true |
 
-Côté front, `VITE_API_URL` (lue **au build**) : `/api` en développement, l'URL publique de l'API
-en production.
+Côté front : `API_ORIGIN` (lue **au démarrage** par `server.mjs`) désigne le backend en
+production. `VITE_API_URL` reste `/api` — en développement c'est Vite qui relaie, en production
+c'est `server.mjs`.
 
 `ANTHROPIC_MODEL=claude-sonnet-5` réduit sensiblement le coût pour une qualité qui reste très
 bonne sur cette tâche.
@@ -191,10 +194,50 @@ l'envoi du journal vers l'API est **désactivé par défaut** et se change dans 
 
 ## Déploiement Railway
 
-Trois services : **Postgres avec pgvector** (template dédié, pas le Postgres standard),
-**backend** (*Root Directory* = `backend`, healthcheck `/health`), **frontend**
-(*Root Directory* = `frontend`, `VITE_API_URL` = URL publique du backend, à redéployer après
-changement). Une fois ton compte créé, passe `ALLOW_REGISTRATION=false`.
+Trois services dans le même projet.
+
+**1. Postgres avec pgvector** — prends le template dédié, pas le Postgres standard : sans
+l'extension `vector`, le schéma ne s'applique pas.
+
+**2. Backend** — *Root Directory* = `backend`, builder Nixpacks (détecté via
+`requirements.txt`), healthcheck `/health`. Variables :
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+JWT_SECRET=<64 caractères aléatoires>
+ANTHROPIC_API_KEY=…
+OPENAI_API_KEY=…
+VAPID_PUBLIC_KEY=…        # python -m app.vapid
+VAPID_PRIVATE_KEY=…
+VAPID_SUBJECT=mailto:toi@exemple.fr
+ALLOW_REGISTRATION=true   # à passer à false une fois ton compte créé
+```
+
+**3. Frontend** — *Root Directory* = `frontend`, builder **Dockerfile**. Une seule variable :
+
+```
+API_ORIGIN=https://<domaine-du-backend>.up.railway.app
+```
+
+`server.mjs` sert `dist/` et relaie `/api` vers `API_ORIGIN`. Conséquences : le navigateur ne
+voit qu'une seule origine (donc aucun CORS, aucun préflight), et l'URL du backend est un réglage
+d'**exécution** — la changer ne demande pas de reconstruire le front. `VITE_API_URL` reste `/api`
+et n'a plus à être touchée.
+
+### Pourquoi un Dockerfile et pas Nixpacks pour le front
+
+Railway monte un cache de build sur `/app/node_modules/.cache`, et `npm ci` commence par
+supprimer `node_modules` en entier. Un point de montage ne peut pas être supprimé, d'où l'échec :
+
+```
+npm error EBUSY: resource busy or locked, rmdir '/app/node_modules/.cache'
+"npm ci && npm run build" did not complete successfully: exit code: 240
+```
+
+Le Dockerfile contourne la cause au lieu de la contourner à moitié : aucun cache n'est monté à cet
+endroit, l'image finale ne contient ni Vite ni TypeScript, et le build est reproductible.
+Alternative si tu tiens à Nixpacks : remplacer `npm ci` par `npm install --no-audit --no-fund`,
+qui ne vide pas `node_modules`.
 
 ## Tests
 
