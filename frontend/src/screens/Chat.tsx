@@ -33,11 +33,63 @@ export default function Chat() {
   // Un seul widget ouvert à la fois : celui dont l'identifiant est ici.
   const [openId, setOpenId] = useState<string | null>(null)
   const bottom = useRef<HTMLDivElement | null>(null)
+  const view = useRef<HTMLDivElement | null>(null)
   const abort = useRef<AbortController | null>(null)
 
   const scroll = useCallback((behavior: ScrollBehavior = 'auto') => {
     requestAnimationFrame(() => bottom.current?.scrollIntoView({ behavior, block: 'end' }))
   }, [])
+
+  /**
+   * Coller au dernier message — et y rester le temps que le fil se stabilise.
+   *
+   * Un seul saut ne suffit pas : le fil prend sa hauteur définitive après son
+   * montage (polices, markdown, graphiques des widgets), et un `scrollTop`
+   * posé trop tôt atterrit au milieu. On répète donc le collage jusqu'à ce que
+   * la hauteur cesse de bouger — trois trames identiques — avec un plafond de
+   * trames pour ne jamais boucler indéfiniment. Le fil peut ne pas être encore
+   * rendu au premier appel : on réessaie plutôt que d'abandonner.
+   */
+  const stickToBottom = useCallback(() => {
+    let previous = -1
+    let stable = 0
+    let frames = 0
+    // Un premier collage tout de suite, sans attendre de trame : une page cachée
+    // ne rend pas de trames, et on veut être en bas *avant* d'être regardé.
+    if (view.current) view.current.scrollTop = view.current.scrollHeight
+    const step = () => {
+      const node = view.current
+      if (node) {
+        node.scrollTop = node.scrollHeight
+        stable = node.scrollHeight === previous ? stable + 1 : 0
+        previous = node.scrollHeight
+      }
+      frames += 1
+      if ((!node || stable < 3) && frames < 40) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }, [])
+
+  /**
+   * Revenir dans l'application, c'est reprendre au dernier message. Trois
+   * événements pour un seul geste : `visibilitychange` couvre le retour
+   * d'arrière-plan (PWA, changement d'onglet), `focus` le retour de fenêtre, et
+   * `pageshow` la restauration depuis le cache de navigation d'iOS, qui ne
+   * rejoue aucun des deux autres.
+   */
+  useEffect(() => {
+    const back = () => {
+      if (document.visibilityState === 'visible') stickToBottom()
+    }
+    document.addEventListener('visibilitychange', back)
+    window.addEventListener('focus', back)
+    window.addEventListener('pageshow', back)
+    return () => {
+      document.removeEventListener('visibilitychange', back)
+      window.removeEventListener('focus', back)
+      window.removeEventListener('pageshow', back)
+    }
+  }, [stickToBottom])
 
   const refreshState = useCallback(() => {
     api
@@ -53,7 +105,10 @@ export default function Chat() {
         setItems(thread.items)
         setState(thread.state)
         setOpenId(lastWidgetId(thread.items))
-        scroll()
+        stickToBottom()
+        // Les polices d'affichage arrivent après le premier rendu : elles
+        // décalent le fil, donc on recolle une fois qu'elles sont là.
+        document.fonts?.ready.then(stickToBottom).catch(() => undefined)
         // Réarme le rappel à chaque ouverture : c'est le seul moment où on est sûr
         // que la page tourne.
         scheduleReminder(loadReminder(), () => !thread.state.checkin_done)
@@ -62,7 +117,7 @@ export default function Chat() {
         setError(exception instanceof Error ? exception.message : 'Chargement impossible.'),
       )
       .finally(() => setLoading(false))
-  }, [scroll])
+  }, [stickToBottom])
 
   const merge = useCallback(
     (incoming: ThreadItem[]) => {
@@ -150,7 +205,7 @@ export default function Chat() {
         <div className="wordmark">Fuck&nbsp;Anxiety</div>
       </header>
 
-      <div className="thread">
+      <div className="thread" ref={view}>
         {items.map((item) =>
           item.kind === 'widget' ? (
             <WidgetHost
