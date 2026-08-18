@@ -1,0 +1,29 @@
+# API
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+pydantic>=2.9,<3.0
+pydantic-settings>=2.5,<3.0
+email-validator>=2.2,<3.0
+sse-starlette>=2.1,<3.0
+
+# Auth
+PyJWT>=2.9,<3.0
+bcrypt>=4.2,<6.0
+
+# Base de données : PostgreSQL + pgvector, pool de connexions threadé
+psycopg2-binary>=2.9.9,<3.0
+
+# Orchestration LLM / RAG
+langchain>=0.3,<1.0
+langchain-core>=0.3,<1.0
+langchain-community>=0.3,<1.0
+langchain-text-splitters>=0.3,<1.0
+langchain-anthropic>=0.3,<1.0
+langchain-openai>=0.2,<1.0
+
+# SDK bruts (utilisés pour le streaming et le fallback)
+anthropic>=0.40,<1.0
+openai>=1.55,<3.0
+
+python-dotenv>=1.0,<2.0
+PyYAML>=6.0,<7.0

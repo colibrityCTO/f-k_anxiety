@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>FUCK ANXIETY — maquette V1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+/* ==========================================================================
+   BOLD MONOCHROME / NEO-BRUTALIST
+   Noir pur / blanc pur. Aucun arrondi. Aucune couleur. Transitions sèches.
+   ========================================================================== */
+:root{
+  --ink:#000; --paper:#fff;
+  --display:'Anton','Haettenschweiler','Arial Narrow',Impact,sans-serif;
+  --body:'Inter',-apple-system,'Helvetica Neue',Arial,sans-serif;
+  --b:2px; --bt:3px; --snap:100ms linear;
+  --g1:8px; --g2:16px; --g3:24px; --g4:40px;
+}
+*,*::before,*::after{box-sizing:border-box;border-radius:0 !important}
+html,body{margin:0;height:100%}
+body{
+  background:var(--ink);color:var(--paper);font-family:var(--body);
+  font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--paper);color:var(--ink)}
+h1,h2,h3,.display{font-family:var(--display);font-weight:400;text-transform:uppercase;letter-spacing:-.02em;line-height:.87;margin:0}
+p{margin:0 0 var(--g2)}
+a{color:var(--paper);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+a:hover{background:var(--paper);color:var(--ink);text-decoration:none}
+button{font-family:var(--body);cursor:pointer;transition:background var(--snap),color var(--snap)}
+button:disabled{opacity:.3;cursor:not-allowed}
+.eyebrow{font-size:.625rem;font-weight:700;text-transform:uppercase;letter-spacing:.22em}
+.tiny{font-size:.75rem}
+.small{font-size:.875rem}
+.dim{opacity:.6}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.8em;border:1px solid var(--paper);padding:0 4px}
+
+/* ---------- Ossature : une seule vue, un seul fil ---------- */
+.app{display:flex;flex-direction:column;height:100dvh;max-width:760px;margin:0 auto;border-left:var(--b) solid var(--paper);border-right:var(--b) solid var(--paper)}
+@media(max-width:800px){.app{border:0}}
+
+/* Le logo, en haut, en grand. Rien d'autre. */
+.topbar{padding:var(--g2) var(--g3) 12px;border-bottom:var(--b) solid var(--paper);flex:0 0 auto}
+.wordmark{font-family:var(--display);text-transform:uppercase;letter-spacing:-.03em;
+  font-size:clamp(2rem,9vw,3.75rem);line-height:.82}
+
+.thread{flex:1 1 auto;overflow-y:auto;padding:var(--g3);display:flex;flex-direction:column;gap:var(--g3);scrollbar-width:thin}
+.thread::-webkit-scrollbar{width:10px}
+.thread::-webkit-scrollbar-thumb{background:var(--paper)}
+.thread::-webkit-scrollbar-track{background:var(--ink);border-left:1px solid var(--paper)}
+
+/* ---------- Messages : deux fenêtres, pas de bulle, pas de texte volant ----
+   L'IA parle dans un cadre ouvert, l'utilisateur dans un bloc plein inversé.
+   L'un est vide, l'autre est plein : la distinction ne coûte aucune couleur. */
+.msg{max-width:58ch;padding:14px var(--g2);border:var(--b) solid var(--paper);font-size:1rem}
+.msg p:last-child{margin-bottom:0}
+.msg-me{margin-left:auto;background:var(--paper);color:var(--ink);font-weight:500}
+/* Réponses pré-choisies : proposées par l'IA, dans son message. Elles
+   disparaissent au clic — le choix devient un message dans le fil. */
+.msg-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding-top:12px;
+  border-top:1px solid rgba(255,255,255,.45)}
+
+/* ---------- Widget : le bloc unitaire de l'interface ---------- */
+.w{border:var(--b) solid var(--paper);background:var(--ink)}
+.w-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--g2);
+  padding:12px var(--g2);border-bottom:var(--b) solid var(--paper)}
+.w-title{font-family:var(--display);text-transform:uppercase;font-size:1.25rem;line-height:1;letter-spacing:-.01em}
+.w-tag{font-size:.5625rem;text-transform:uppercase;letter-spacing:.2em;border:1px solid var(--paper);padding:2px 6px;white-space:nowrap}
+.w-body{padding:var(--g2)}
+.w-foot{padding:var(--g2);border-top:var(--b) solid var(--paper);display:flex;gap:var(--g1);flex-wrap:wrap;align-items:center}
+.w-done{background:var(--paper);color:var(--ink)}
+.w-done .w-head,.w-done .w-foot{border-color:var(--ink)}
+.w-done .w-tag{border-color:var(--ink)}
+/* Widget figé : le corps devient un récapitulatif dense, pas des contrôles
+   morts. Grille à filets, façon ticket. */
+.sum{display:flex;flex-wrap:wrap}
+.sum>div{border:1px solid currentColor;margin:-1px 0 0 -1px;padding:8px 12px;min-width:104px;flex:1 1 auto}
+.sum span{display:block;font-size:.5625rem;font-weight:700;text-transform:uppercase;letter-spacing:.14em;opacity:.65}
+.sum b{font-family:var(--display);font-size:1.5rem;line-height:1.1;font-variant-numeric:tabular-nums}
+
+/* ---------- Boutons ---------- */
+.btn{font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.16em;
+  padding:12px 18px;border:var(--b) solid var(--paper);background:var(--ink);color:var(--paper);display:inline-block;text-align:center}
+.btn:hover:not(:disabled){background:var(--paper);color:var(--ink)}
+.btn-primary{background:var(--paper);color:var(--ink)}
+.btn-primary:hover:not(:disabled){background:var(--ink);color:var(--paper)}
+.btn-sm{padding:8px 12px;font-size:.625rem;letter-spacing:.14em}
+.btn-ghost{border-color:transparent;padding:8px 4px}
+.w-done .btn{border-color:var(--ink);background:var(--paper);color:var(--ink)}
+.w-done .btn:hover{background:var(--ink);color:var(--paper)}
+
+/* ---------- Curseurs : piste fine, poignée carrée ---------- */
+.slider{margin-bottom:var(--g3)}
+.slider:last-child{margin-bottom:0}
+.slider .head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--g2)}
+.slider .lab{font-size:.625rem;font-weight:700;text-transform:uppercase;letter-spacing:.16em}
+.slider .val{font-family:var(--display);font-size:2rem;line-height:1;font-variant-numeric:tabular-nums}
+.slider .scale{display:flex;justify-content:space-between;font-size:.5625rem;text-transform:uppercase;letter-spacing:.12em;opacity:.55;margin-top:2px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:none;cursor:pointer;margin:6px 0 0}
+input[type=range]::-webkit-slider-runnable-track{height:var(--b);background:var(--paper)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:24px;background:var(--paper);margin-top:-11px}
+input[type=range]::-moz-range-track{height:var(--b);background:var(--paper)}
+input[type=range]::-moz-range-thumb{width:16px;height:24px;background:var(--paper);border:0}
+
+/* ---------- Pas-à-pas numérique : − valeur + ---------- */
+.stepper{display:flex;align-items:stretch;border:var(--b) solid var(--paper);width:max-content}
+.stepper button{width:40px;border:0;background:var(--ink);color:var(--paper);font-size:1.125rem;font-weight:700;line-height:1}
+.stepper button:hover{background:var(--paper);color:var(--ink)}
+.stepper .n{min-width:56px;display:grid;place-items:center;font-family:var(--display);font-size:1.5rem;
+  border-left:var(--b) solid var(--paper);border-right:var(--b) solid var(--paper);font-variant-numeric:tabular-nums}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--g2);margin-top:var(--g2)}
+.pair .lab{font-size:.625rem;font-weight:700;text-transform:uppercase;letter-spacing:.16em;margin-bottom:6px}
+
+/* ---------- Puces ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:.6875rem;font-weight:500;text-transform:uppercase;letter-spacing:.1em;padding:7px 10px;
+  border:var(--b) solid var(--paper);background:var(--ink);color:var(--paper)}
+.chip:hover,.chip[aria-pressed=true]{background:var(--paper);color:var(--ink)}
+
+textarea{width:100%;font-family:var(--body);font-size:1rem;color:var(--paper);background:var(--ink);
+  border:var(--b) solid var(--paper);padding:12px;min-height:104px;resize:vertical}
+textarea::placeholder{color:var(--paper);opacity:.35}
+:focus-visible{outline:var(--bt) solid var(--paper);outline-offset:3px}
+
+/* ---------- Échelle GAD-7 ---------- */
+.q{border-bottom:1px solid rgba(255,255,255,.35);padding:var(--g2) 0}
+.q:first-child{padding-top:0}
+.q .txt{font-size:.9375rem;margin-bottom:var(--g1)}
+.opts{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.opt{font-size:.5625rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:8px 2px;
+  border:var(--b) solid var(--paper);background:var(--ink);color:var(--paper);line-height:1.2}
+.opt:hover,.opt[aria-pressed=true]{background:var(--paper);color:var(--ink)}
+
+/* ---------- Chiffres et graphiques ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:var(--g2);margin-bottom:var(--g2)}
+.stat{border:var(--b) solid var(--paper);padding:12px}
+.stat b{display:block;font-family:var(--display);font-size:2.75rem;line-height:.9;font-variant-numeric:tabular-nums}
+.stat span{display:block;font-size:.5625rem;text-transform:uppercase;letter-spacing:.18em;margin-top:4px;opacity:.7}
+svg.chart{width:100%;height:auto;display:block}
+.legend{display:flex;gap:var(--g2);flex-wrap:wrap;font-size:.5625rem;text-transform:uppercase;letter-spacing:.16em;margin-top:var(--g1);opacity:.8}
+.legend i{display:inline-block;width:22px;border-top:var(--b) solid var(--paper);vertical-align:3px;margin-right:5px}
+.legend i.dash{border-top-style:dashed}
+
+/* ---------- Respiration : carré, pas cercle ---------- */
+.breath{height:260px;display:grid;place-items:center;border:var(--b) solid var(--paper)}
+.sq{width:110px;height:110px;border:var(--bt) solid var(--paper);display:grid;place-items:center;
+  font-family:var(--display);font-size:2.25rem;transition:transform var(--snap)}
+.sq.full{background:var(--paper);color:var(--ink)}
+.phase{font-family:var(--display);text-transform:uppercase;font-size:1.375rem;text-align:center;margin-top:var(--g2)}
+.bmeta{text-align:center;font-size:.625rem;text-transform:uppercase;letter-spacing:.18em;opacity:.7;font-variant-numeric:tabular-nums}
+
+/* ---------- « D'où ça sort » ---------- */
+details.why{border-top:var(--b) solid var(--paper);margin-top:var(--g2);padding-top:12px}
+details.why summary{list-style:none;cursor:pointer;display:flex;gap:var(--g1);align-items:baseline;
+  font-family:var(--display);text-transform:uppercase;font-size:.9375rem;letter-spacing:.04em}
+details.why summary::-webkit-details-marker{display:none}
+details.why summary::before{content:'+';font-family:var(--body);font-weight:700;border:var(--b) solid var(--paper);
+  width:20px;height:20px;line-height:16px;text-align:center;flex:0 0 auto;font-size:.875rem}
+details.why[open] summary::before{content:'–';background:var(--paper);color:var(--ink)}
+details.why summary:hover{background:var(--paper);color:var(--ink)}
+.why-sec{margin-top:var(--g2);padding-left:12px;border-left:var(--b) solid var(--paper)}
+.why-sec h4{font-family:var(--body);font-size:.5625rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em;margin:0 0 4px}
+.why-sec p{font-size:.8125rem;margin-bottom:0}
+table{width:100%;border-collapse:collapse;font-size:.6875rem;margin-top:6px}
+th,td{border:1px solid var(--paper);padding:4px 6px;text-align:left}
+th{font-size:.5625rem;text-transform:uppercase;letter-spacing:.1em}
+.srcs{list-style:none;padding:0;margin:0}
+.srcs li{font-size:.75rem;padding-left:14px;position:relative;margin-bottom:6px}
+.srcs li::before{content:'';position:absolute;left:0;top:7px;width:7px;height:7px;background:var(--paper)}
+.cite{display:inline-block;min-width:16px;padding:0 4px;background:var(--paper);color:var(--ink);
+  font-size:.5625rem;font-weight:700;text-align:center;vertical-align:2px}
+
+/* ---------- Barre de saisie : toujours en bas ---------- */
+.composer{flex:0 0 auto;border-top:var(--b) solid var(--paper);background:var(--ink)}
+.inputrow{display:flex;align-items:stretch;gap:0;padding:var(--g2) var(--g3);}
+.iconbtn{width:52px;flex:0 0 auto;border:var(--b) solid var(--paper);background:var(--ink);color:var(--paper);
+  display:grid;place-items:center}
+.iconbtn:hover,.iconbtn[aria-expanded=true]{background:var(--paper);color:var(--ink)}
+.inputrow input{flex:1 1 auto;font-family:var(--body);font-size:1rem;color:var(--paper);background:var(--ink);
+  border:var(--b) solid var(--paper);border-left:0;border-right:0;padding:12px 14px;min-width:0}
+.inputrow input::placeholder{color:var(--paper);opacity:.35}
+.sendbtn{width:64px;flex:0 0 auto;border:var(--b) solid var(--paper);background:var(--paper);color:var(--ink);
+  font-weight:700;font-size:.6875rem;letter-spacing:.12em;text-transform:uppercase}
+.sendbtn:hover{background:var(--ink);color:var(--paper)}
+
+/* ---------- Lanceur de widgets ---------- */
+.launcher{display:none;border-top:var(--b) solid var(--paper);padding:var(--g2) var(--g3);
+  max-height:44dvh;overflow-y:auto}
+.launcher.open{display:block}
+.launcher h3{font-size:.875rem;letter-spacing:.02em;margin-bottom:12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.tile{border:var(--b) solid var(--paper);background:var(--ink);color:var(--paper);
+  aspect-ratio:1/1;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;padding:10px;text-align:left}
+.tile:hover:not(:disabled){background:var(--paper);color:var(--ink)}
+.tile .ic{width:22px;height:22px}
+.tile .nm{font-size:.625rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;line-height:1.15}
+.tile .v2{font-size:.5rem;letter-spacing:.2em;opacity:.6}
+.tile svg{stroke:currentColor;fill:none;stroke-width:2.5}
+.tile svg.filled{fill:currentColor;stroke:none}
+
+/* Repère de maquette, à retirer en production */
+.mockflag{position:fixed;bottom:0;left:0;z-index:50;background:var(--paper);color:var(--ink);
+  font-size:.5rem;font-weight:700;letter-spacing:.2em;padding:2px 6px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="mockflag">Maquette — aucun backend</div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="wordmark">Fuck&nbsp;Anxiety</div>
+  </header>
+
+  <div class="thread" id="thread"></div>
+
+  <div class="composer">
+    <div class="inputrow">
+      <button class="iconbtn" id="plus" aria-expanded="false" aria-label="Ouvrir les widgets" title="Widgets">
+        <svg width="20" height="20" viewBox="0 0 20 20" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M10 2v16M2 10h16"/></svg>
+      </button>
+      <input id="input" placeholder="Écrire… ou lancer un widget avec +" autocomplete="off" />
+      <button class="sendbtn" id="send">OK</button>
+    </div>
+    <div class="launcher" id="launcher">
+      <h3>Widgets</h3>
+      <div class="tiles" id="tiles"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =======================================================================
+   Maquette : tout se passe dans le fil. Aucune requête réseau, données
+   fictives. Objectif : juger l'UX et le design avant de coder la V1.
+   ======================================================================= */
+const thread = document.getElementById('thread');
+const input = document.getElementById('input');
+const launcher = document.getElementById('launcher');
+const plus = document.getElementById('plus');
+const tilesBox = document.getElementById('tiles');
+
+const ICONS = {
+  checkin:'<path d="M3 3h14v14H3z"/><path d="M6 10l3 3 5-6"/>',
+  breath:'<path d="M3 3h14v14H3z"/><path d="M7 10h6"/>',
+  journal:'<path d="M4 2h12v16H4z"/><path d="M7 6h6M7 10h6M7 14h3"/>',
+  scale:'<path d="M3 16h14"/><path d="M5 16V9M9 16V5M13 16v-4M17 16v-8"/>',
+  stats:'<path d="M2 14l4-5 4 3 3-6 5 4"/><path d="M2 17h16"/>',
+  analysis:'<path d="M3 3h14v14H3z"/><path d="M6 13l3-4 2 2 3-5"/>',
+  sources:'<path d="M3 4h6v12H3zM11 4h6v12h-6z"/>',
+  expo:'<path d="M10 2v12"/><path d="M5 9l5 5 5-5"/><path d="M3 17h14"/>',
+  account:'<path d="M4 3h12v14H4z"/><path d="M7 8h6M7 12h4"/>',
+  logout:'<path d="M8 3H3v14h5"/><path d="M12 6l4 4-4 4"/><path d="M8 10h8"/>'
+};
+const icon = k => `<svg class="ic" viewBox="0 0 20 20">${ICONS[k]}</svg>`;
+
+const WIDGETS = [
+  {id:'checkin',  name:'Check-in',   ic:'checkin'},
+  {id:'breath',   name:'Respirer',   ic:'breath'},
+  {id:'journal',  name:'Journal',    ic:'journal'},
+  {id:'gad7',     name:'GAD-7',      ic:'scale'},
+  {id:'stats',    name:'Mes chiffres',ic:'stats'},
+  {id:'analysis', name:'Analyse',    ic:'analysis'},
+  {id:'sources',  name:'Sources',    ic:'sources'},
+  {id:'expo',     name:'Exposition', ic:'expo', v2:true},
+  {id:'account',  name:'Compte',     ic:'account'},
+  {id:'logout',   name:'Sortir',     ic:'logout'}
+];
+
+WIDGETS.forEach(w=>{
+  const b=document.createElement('button');
+  b.className='tile'; b.disabled=!!w.v2;
+  b.innerHTML=`${icon(w.ic)}<span class="nm">${w.name}</span>${w.v2?'<span class="v2">V2</span>':''}`;
+  b.onclick=()=>{ closeLauncher(); addWidget(w.id); };
+  tilesBox.appendChild(b);
+});
+
+function closeLauncher(){ launcher.classList.remove('open'); plus.setAttribute('aria-expanded','false'); }
+plus.onclick=()=>{
+  const open=launcher.classList.toggle('open');
+  plus.setAttribute('aria-expanded', open?'true':'false');
+  if(open) launcher.scrollIntoView({block:'nearest'});
+};
+
+function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
+function push(node){ thread.appendChild(node); node.scrollIntoView({block:'nearest'}); thread.scrollTop=thread.scrollHeight; return node; }
+/* L'IA parle dans une fenêtre. Elle peut y attacher des réponses
+   pré-choisies : au clic, la ligne disparaît et le choix devient un message. */
+function ai(html, actions){
+  const node = push(el(`<div class="msg msg-ai">${html}${actions&&actions.length?'<div class="msg-actions"></div>':''}</div>`));
+  if(actions&&actions.length){
+    const row=node.querySelector('.msg-actions');
+    actions.forEach(([label,fn])=>{
+      const b=document.createElement('button');
+      b.className='btn btn-sm'; b.textContent=label;
+      b.onclick=()=>{ row.remove(); me(label); fn(); };
+      row.appendChild(b);
+    });
+  }
+  return node;
+}
+function me(text){ return push(el(`<div class="msg msg-me">${text.replace(/</g,'&lt;')}</div>`)); }
+
+/* ---------- Ouverture proactive ---------- */
+function boot(){
+  ai(`T'as pas encore fait ton check-in aujourd'hui. <strong>13 jours d'affilée</strong> jusqu'ici.<br /><br />Deux minutes, et je peux comparer cette journée aux précédentes.`);
+  addWidget('checkin');
+}
+
+/* ---------- Saisie libre → widget pré-rempli à confirmer ---------- */
+function handleText(text){
+  me(text);
+  const t=text.toLowerCase();
+  const num=(re)=>{ const m=t.match(re); return m?parseInt(m[1],10):null; };
+  const anx = num(/anxi[ée]t[ée]\D{0,6}(\d{1,2})/) ?? num(/\b(\d{1,2})\s*\/\s*10/);
+  const sleepBad = /mal dormi|nuit pourrie|pas dormi|insomnie/.test(t);
+  const sleep = num(/(\d{1,2})\s*h(?:eures)?\s*(?:de\s*)?sommeil/) ?? (sleepBad?5:null);
+  const panic = /crise|panique|attaque/.test(t);
+
+  if(anx!==null || sleep!==null || panic){
+    ai(`J'ai compris : ${[
+      anx!==null?`anxiété <strong>${anx}/10</strong>`:null,
+      sleep!==null?`sommeil <strong>${sleep} h</strong>`:null,
+      panic?`<strong>une attaque de panique</strong>`:null
+    ].filter(Boolean).join(', ')}. J'ai pré-rempli le check-in — vérifie et valide, j'enregistre rien avant.`);
+    addWidget('checkin',{anx:anx??5,sleep:sleep??7,panic:panic?1:0});
+    return;
+  }
+  if(/respir|calme|angoiss|crise/.test(t)){ ai(`On fait redescendre l'activation d'abord. 5 minutes à 6 cycles par minute.`); addWidget('breath'); return; }
+  if(/chiffre|courbe|stat|progr/.test(t)){ addWidget('stats'); return; }
+  if(/pourquoi|comment ça marche|d'où|source/.test(t)){
+    ai(`La respiration lente est réglée sur ~6 cycles/minute parce qu'à cette fréquence la respiration entre en résonance avec la boucle du baroréflexe : l'amplitude des variations du rythme cardiaque augmente et les indices d'activité vagale (RMSSD) montent <span class="cite">1</span>. L'expiration est la phase active : c'est là que l'influence parasympathique sur le cœur est maximale.<br /><br />À noter : la preuve est solide sur les effets physiologiques, plus modérée sur la réduction durable de l'anxiété quand la respiration est utilisée seule <span class="cite">1</span>.`);
+    addWidget('sources'); return;
+  }
+  ai(`Noté, c'est dans ton journal du jour. Tu veux le développer en journal de pensées — situation, pensée automatique, ce qui la contredit ?`);
+  addWidget('journal',{text});
+}
+document.getElementById('send').onclick=()=>{ const v=input.value.trim(); if(!v)return; input.value=''; closeLauncher(); handleText(v); };
+input.addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('send').click(); });
+
+/* ---------- Fabrique de widgets ---------- */
+function shell(title,tag,bodyHTML,footHTML){
+  return el(`<div class="w">
+    <div class="w-head"><div class="w-title">${title}</div><div class="w-tag">${tag}</div></div>
+    <div class="w-body">${bodyHTML}</div>
+    ${footHTML?`<div class="w-foot">${footHTML}</div>`:''}
+  </div>`);
+}
+function slider(lab,val,lo,hi,max=10){
+  return `<div class="slider">
+    <div class="head"><div class="lab">${lab}</div><div class="val" data-out>${val}</div></div>
+    <input type="range" min="0" max="${max}" value="${val}" />
+    <div class="scale"><span>0 ${lo}</span><span>${max} ${hi}</span></div>
+  </div>`;
+}
+function stepper(lab,val){
+  return `<div><div class="lab">${lab}</div>
+    <div class="stepper"><button data-d="-1">−</button><div class="n">${val}</div><button data-d="1">+</button></div></div>`;
+}
+function wireControls(node){
+  node.querySelectorAll('.slider').forEach(s=>{
+    const r=s.querySelector('input'), o=s.querySelector('[data-out]');
+    r.addEventListener('input',()=>o.textContent=r.value);
+  });
+  node.querySelectorAll('.stepper').forEach(s=>{
+    const n=s.querySelector('.n');
+    s.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      n.textContent=Math.max(0,parseInt(n.textContent,10)+parseInt(b.dataset.d,10));
+    });
+  });
+  node.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=()=>{
+    b.setAttribute('aria-pressed', b.getAttribute('aria-pressed')==='true'?'false':'true');
+  });
+}
+function whyBlock(mechanism,level,sources,data){
+  return `<details class="why"><summary>D'où ça sort</summary>
+    <div class="why-sec"><h4>Mécanisme</h4><p>${mechanism}</p></div>
+    <div class="why-sec"><h4>Niveau de preuve</h4><p><span class="w-tag">${level}</span></p></div>
+    ${data?`<div class="why-sec"><h4>Vos données qui ont déclenché ceci</h4>${data}</div>`:''}
+    <div class="why-sec"><h4>Références</h4><ul class="srcs">${sources.map(s=>`<li>${s}</li>`).join('')}</ul></div>
+  </details>`;
+}
+
+function addWidget(id,opts={}){
+  let node;
+  if(id==='checkin'){
+    node=shell('Check-in du jour','Saisie · 2 min',
+      slider('Anxiété',opts.anx??5,'aucune','maximale')+
+      slider('Humeur',opts.mood??5,'très basse','très bonne')+
+      slider('Évitement',opts.avoid??4,'aucun','total')+
+      `<div class="pair">${stepper('Sommeil (h)',opts.sleep??7)}${stepper('Cafés',opts.caf??2)}${stepper('Paniques',opts.panic??0)}</div>`+
+      whyBlock(
+        "Mesurer un comportement le modifie ; les données corrigent la mémoire biaisée par l'anxiété, qui ne retient que les pires moments ; et les régularités personnelles (sommeil → anxiété du lendemain) ne sont visibles que sur ta propre série, aucune moyenne de population ne peut te les dire.",
+        'Niveau A',
+        ["Linardon et al., World Psychiatry 2024 — méta-analyse de 176 ECR d'applications","NICE CG113 — l'éducation et le suivi actif constituent l'étape 1"]),
+      `<button class="btn btn-primary" data-validate>Valider</button><button class="btn btn-sm" data-skip>Pas maintenant</button>`);
+    wireControls(node);
+    node.querySelector('[data-validate]').onclick=()=>{
+      const ranges=[...node.querySelectorAll('input[type=range]')].map(r=>r.value);
+      const nums=[...node.querySelectorAll('.stepper .n')].map(n=>n.textContent);
+      const anx=ranges[0];
+      const cells=[['Anxiété',ranges[0]],['Humeur',ranges[1]],['Évitement',ranges[2]],
+                   ['Sommeil',nums[0]+' h'],['Cafés',nums[1]],['Paniques',nums[2]]];
+      node.classList.add('w-done');
+      node.querySelector('.w-tag').textContent='Enregistré';
+      node.querySelector('.w-body').innerHTML=
+        `<div class="sum">${cells.map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>`;
+      node.querySelector('.w-foot').innerHTML=`<button class="btn btn-sm">Corriger</button><span class="tiny">Enregistré à l'instant</span>`;
+      ai(`Noté : anxiété <strong>${anx}/10</strong>. Sur tes 11 nuits enregistrées, tes nuits courtes sont suivies d'une anxiété plus haute le lendemain — corrélation <strong>−0,62</strong>. Je te montre ?`,
+        [
+          ['Montre-moi', ()=>addWidget('stats')],
+          ['Respirer 5 min', ()=>addWidget('breath')],
+          ['Plus tard', ()=>ai('OK. À demain — je te relance pour le check-in.')]
+        ]);
+    };
+    node.querySelector('[data-skip]').onclick=()=>{ node.querySelector('.w-tag').textContent='Reporté';
+      ai(`Noté comme non fait, sans jugement : c'est une donnée. Qu'est-ce qui a bloqué ? Trop long, mauvais moment, ou pas envie ?`); };
+    // Les items du GAD-7 gardent leur formulation validée (vouvoiement) :
+    // on ne réécrit pas un instrument psychométrique.
+  }
+
+  else if(id==='breath'){
+    node=shell('Respiration lente','5 min · ~6 cycles/min',
+      `<div class="breath"><div class="sq" data-sq>—</div></div>
+       <div class="phase" data-phase>Prêt quand vous voulez</div>
+       <div class="bmeta" data-meta>05:00 restant · 0 cycle</div>`+
+      whyBlock("À ~0,1 Hz la respiration entre en résonance avec le baroréflexe : l'amplitude des variations du rythme cardiaque augmente et les indices d'activité vagale (RMSSD) montent. L'expiration est la phase active.",
+        'Niveau A',
+        ["Laborde et al., Neurosci Biobehav Rev 2022 — méta-analyse respiration lente et VFC","Laborde et al. 2021 — dose-réponse d'une séance à 6 cycles/min"]),
+      `<button class="btn btn-primary" data-go>Commencer</button><span class="tiny dim">À faire à froid, pas pendant une crise — sinon ça devient un comportement de sécurité.</span>`);
+    const sq=node.querySelector('[data-sq]'), ph=node.querySelector('[data-phase]'), mt=node.querySelector('[data-meta]');
+    let t=0,timer=null;
+    node.querySelector('[data-go]').onclick=(e)=>{
+      if(timer){clearInterval(timer);timer=null;e.target.textContent='Reprendre';return;}
+      e.target.textContent='Pause';
+      timer=setInterval(()=>{
+        t++; const pos=t%10, inhale=pos<5, left=inhale?5-pos:10-pos;
+        sq.textContent=left||5;
+        sq.style.transform='scale('+(inhale?1+0.5*(pos/5):1.5-0.5*((pos-5)/5)).toFixed(3)+')';
+        sq.classList.toggle('full',!inhale);
+        ph.textContent=inhale?'Inspirez par le nez':'Expirez sans forcer';
+        const r=300-t; mt.textContent=String(Math.floor(r/60)).padStart(2,'0')+':'+String(r%60).padStart(2,'0')+' restant · '+Math.floor(t/10)+' cycles';
+        if(r<=0){clearInterval(timer);timer=null;ph.textContent='Terminé';
+          ai(`Séance faite. Ton anxiété baisse en moyenne de <strong>2 points</strong> après cet exercice, sur 6 mesures avant/après — c'est ce qui marche le mieux chez toi pour l'instant.`);}
+      },1000);
+    };
+  }
+
+  else if(id==='journal'){
+    node=shell('Journal','Saisie',
+      `<textarea placeholder="Les faits d'abord. Puis ce que t'as ressenti dans le corps. Puis ce que t'as fait, ou évité de faire.">${opts.text?String(opts.text).replace(/</g,'&lt;'):''}</textarea>
+       <div style="margin-top:16px"><div class="lab" style="font-size:.625rem;font-weight:700;text-transform:uppercase;letter-spacing:.16em;margin-bottom:6px">Émotions</div>
+       <div class="chips">${['peur','angoisse','honte','colère','tristesse','culpabilité'].map(x=>`<button class="chip" data-toggle aria-pressed="false">${x}</button>`).join('')}</div></div>`,
+      `<button class="btn btn-primary" data-validate>Enregistrer</button><button class="btn btn-sm">Développer en journal de pensées</button>`);
+    wireControls(node);
+    node.querySelector('[data-validate]').onclick=()=>{node.classList.add('w-done');node.querySelector('.w-tag').textContent='Enregistré';};
+  }
+
+  else if(id==='gad7'){
+    const items=["Sentiment de nervosité, d'anxiété ou de tension","Incapacité d'arrêter de vous inquiéter","Inquiétudes excessives à propos de tout et de rien","Difficulté à vous détendre","Agitation telle qu'il est difficile de rester tranquille","Tendance à être facilement contrarié(e) ou irritable","Peur que quelque chose d'épouvantable puisse arriver"];
+    const opts4=['Jamais','Plusieurs jours','Plus de la moitié','Presque chaque jour'];
+    node=shell('GAD-7','Mesure · hebdomadaire',
+      `<p class="small dim">Au cours des 2 dernières semaines, à quelle fréquence avez-vous été gêné(e) par :</p>`+
+      items.map((q,i)=>`<div class="q"><div class="txt">${i+1}. ${q}</div><div class="opts">${opts4.map((o,v)=>`<button class="opt" data-q="${i}" data-v="${v}" aria-pressed="false">${o}</button>`).join('')}</div></div>`).join('')+
+      whyBlock("Instrument de suivi validé, sensible au changement. Ses seuils (5/10/15) et sa différence minimale cliniquement importante (≈4 points) permettent de distinguer un progrès réel du bruit de mesure.",
+        'Niveau A',
+        ["Toussaint et al., J Affect Disord 2020 — DMCI ≈ 4 points","Spitzer et al. — seuil ≥ 10 : sensibilité 89 %, spécificité 82 %"]),
+      `<button class="btn btn-primary" data-validate disabled>Valider</button><span class="tiny dim" data-count>0 / 7 répondu</span>`);
+    const answers={}, btn=node.querySelector('[data-validate]'), cnt=node.querySelector('[data-count]');
+    node.querySelectorAll('.opt').forEach(o=>o.onclick=()=>{
+      node.querySelectorAll(`.opt[data-q="${o.dataset.q}"]`).forEach(x=>x.setAttribute('aria-pressed','false'));
+      o.setAttribute('aria-pressed','true'); answers[o.dataset.q]=+o.dataset.v;
+      const n=Object.keys(answers).length; cnt.textContent=`${n} / 7 répondu`; btn.disabled=n<7;
+    });
+    btn.onclick=()=>{
+      const total=Object.values(answers).reduce((a,b)=>a+b,0);
+      node.classList.add('w-done'); node.querySelector('.w-tag').textContent='Enregistré';
+      ai(`<strong>${total} / 21</strong> — ${total<=4?'anxiété minimale':total<=9?'anxiété légère':total<=14?'anxiété modérée':'anxiété sévère'}. Ta mesure précédente était 13, donc ${13-total>0?`une baisse de ${13-total}`:`une hausse de ${total-13}`} points.<br /><br />${Math.abs(13-total)>=4?`C'est une amélioration <strong>cliniquement significative</strong> : le seuil est de 4 points.`:`C'est <strong>sous le seuil de 4 points</strong> : c'est du bruit de mesure, pas un progrès. Je te félicite pas pour du bruit.`}`);
+    };
+  }
+
+  else if(id==='stats'){
+    const anx=[8,7,8,6,7,9,6,5,7,6,5,6,4,5], mood=[2,3,2,4,3,1,4,5,3,4,5,4,6,5];
+    const W=640,H=190,P={t:18,r:20,b:26,l:34}, iw=W-P.l-P.r, ih=H-P.t-P.b;
+    const X=i=>P.l+i*(iw/(anx.length-1)), Y=v=>P.t+ih-(v/10)*ih;
+    const line=(a,dash)=>`<polyline fill="none" stroke="#fff" stroke-width="2" ${dash?'stroke-dasharray="6 4"':''} points="${a.map((v,i)=>X(i)+','+Y(v)).join(' ')}"/>`;
+    node=shell('Mes chiffres','14 derniers jours',
+      `<div class="stats">
+         <div class="stat"><b>5,1</b><span>Anxiété moy. 7 j</span></div>
+         <div class="stat"><b>−1,4</b><span>vs 7 j précédents</span></div>
+         <div class="stat"><b>82%</b><span>Activités faites</span></div>
+       </div>
+       <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Anxiété et humeur, 14 jours">
+         <rect x="${P.l}" y="${P.t}" width="${iw}" height="${ih}" fill="none" stroke="#fff" stroke-width="2"/>
+         ${[2.5,5,7.5].map(v=>`<line x1="${P.l}" x2="${W-P.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#fff" stroke-width="1" opacity=".25"/>`).join('')}
+         ${[0,5,10].map(v=>`<text x="${P.l-6}" y="${Y(v)+3}" text-anchor="end" font-size="9" fill="#fff" opacity=".6">${v}</text>`).join('')}
+         ${line(anx,false)}${line(mood,true)}
+         <rect x="${X(13)-4}" y="${Y(5)-4}" width="8" height="8" fill="#fff"/>
+         <text x="${X(13)-9}" y="${Y(5)-8}" text-anchor="end" font-size="11" font-weight="700" fill="#fff">5</text>
+         <text x="${P.l+4}" y="${H-8}" font-size="9" fill="#fff" opacity=".6">04/08</text>
+         <text x="${W-P.r}" y="${H-8}" text-anchor="end" font-size="9" fill="#fff" opacity=".6">17/08</text>
+       </svg>
+       <div class="legend"><span><i></i>Anxiété</span><span><i class="dash"></i>Humeur</span></div>`+
+      whyBlock("Aucune couleur : les deux séries se distinguent par le motif du trait et l'étiquette du dernier point. Une seule échelle 0-10 pour les deux, jamais deux axes.",
+        'Lecture',
+        ["Les chiffres sont calculés côté serveur, pas par le modèle : moyennes sur 7 jours et corrélations de Pearson décalées d'un jour."],
+        `<table><tr><th>Date</th><th>Sommeil</th><th>Anxiété J+1</th></tr><tr><td>12/08</td><td>5,5 h</td><td>7</td></tr><tr><td>13/08</td><td>8,0 h</td><td>5</td></tr><tr><td>14/08</td><td>7,5 h</td><td>4</td></tr></table>`),
+      `<button class="btn btn-sm">30 jours</button><button class="btn btn-sm">Sommeil</button><button class="btn btn-sm">GAD-7</button>`);
+  }
+
+  else if(id==='analysis'){
+    node=shell('Analyse','7 derniers jours · Claude',
+      `<p><strong>Anxiété en baisse à 5,1/10 sur 7 jours, 82 % d'activités réalisées, GAD-7 à 9.</strong></p>
+       <h3 style="font-size:1rem;margin:16px 0 8px">Ce que tes données montrent</h3>
+       <ul class="srcs">
+         <li>14 jours renseignés sur 14. Anxiété moyenne <strong>5,1/10</strong>, soit <strong>−1,4</strong> point vs les 7 jours précédents.</li>
+         <li>Tes nuits courtes sont suivies d'une anxiété plus élevée le lendemain : corrélation <strong>−0,62</strong> sur 11 paires de jours. Association, pas causalité.</li>
+         <li>La respiration lente fait baisser ton anxiété de <strong>2 points</strong> en moyenne sur 6 mesures avant/après.</li>
+       </ul>
+       <h3 style="font-size:1rem;margin:16px 0 8px">Ce qui n'a pas été fait</h3>
+       <ul class="srcs"><li>Journal du soir : non fait 4 fois. Raison notée : « trop long le soir ». C'est pas un échec, c'est une indication : je te propose le format court, 3 lignes.</li></ul>
+       <h3 style="font-size:1rem;margin:16px 0 8px">Une hypothèse</h3>
+       <p class="small">Le sommeil est votre levier principal. La littérature va dans ce sens : dans une analyse de médiation sur deux grands essais randomisés, l'amélioration du sommeil médiait celle de l'anxiété <span class="cite">1</span>. Concrètement : heure de lever fixe, 7 jours sur 7.</p>`+
+      whyBlock("Deux étages : tous les chiffres sont calculés en Python (moyennes, corrélations de Pearson décalées d'un jour, taux de réalisation, écart GAD-7 comparé à la DMCI). Le modèle ne calcule rien — il interprète et rédige à partir de ces chiffres et des fiches sources uniquement.",
+        'Traçable',
+        ["<span class='cite'>1</span> J Affect Disord 2023 — l'amélioration du sommeil médie celle de l'anxiété (dCBT-I)","Toussaint et al. 2020 — DMCI du GAD-7 ≈ 4 points"],
+        `<table><tr><th>Signal</th><th>Valeur</th><th>n</th></tr><tr><td>corrélation sommeil → anxiété J+1</td><td>−0,62</td><td>11</td></tr><tr><td>adhérence</td><td>0,82</td><td>17</td></tr><tr><td>effet respiration (après − avant)</td><td>−2,0</td><td>6</td></tr></table>`),
+      `<button class="btn btn-sm">Voir les fiches citées</button><button class="btn btn-sm">Analyser 4 semaines</button>`);
+  }
+
+  else if(id==='sources'){
+    const docs=[['Respiration lente à ~6 cycles/minute','A'],['Sommeil : la cible transdiagnostique la plus rentable','A'],['Expositions : les 8 leviers d\'optimisation','A'],['Le temps d\'inquiétude programmé','B']];
+    node=shell('Sources','21 fiches',
+      docs.map(([t,l])=>`<div style="border-bottom:1px solid rgba(255,255,255,.35);padding:12px 0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline"><a href="#" onclick="return false">${t}</a><span class="w-tag">Preuve ${l}</span></div></div>`).join('')+
+      `<p class="small dim" style="margin-top:16px">C'est exactement le corpus que je consulte : rien de plus, rien d'autre. Tu peux interroger la même recherche que moi.</p>`,
+      `<button class="btn btn-sm">Chercher dans les fiches</button>`);
+  }
+
+  else if(id==='account'){
+    node=shell('Compte','Système',
+      `<p class="small">camille@exemple.fr · membre depuis le 04/08/2026</p>
+       <div style="display:flex;gap:12px;align-items:flex-start;margin-top:12px">
+         <input type="checkbox" checked style="appearance:none;width:20px;height:20px;border:2px solid #fff;background:#fff" />
+         <span class="small">J'autorise l'envoi de mon journal à l'API du modèle de langage pour les analyses rédigées. Sans cela, l'analyse reste disponible en version locale déterministe.</span>
+       </div>`,
+      `<button class="btn btn-sm">Enregistrer</button><button class="btn btn-sm" onclick="addWidget('logout')">Sortir</button>`);
+  }
+
+  else if(id==='logout'){
+    node=shell('Sortir','Système',
+      `<p class="small">Ton fil et tes données restent enregistrés. Tu les retrouves à la prochaine connexion.</p>`,
+      `<button class="btn btn-primary">Confirmer la déconnexion</button><button class="btn btn-sm">Annuler</button>`);
+  }
+
+  return push(node);
+}
+
+boot();
+</script>
+</body>
+</html>
