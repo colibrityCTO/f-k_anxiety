@@ -177,6 +177,7 @@ navigateur, dite dans l'interface plutôt que masquée.
 | `CORS_ORIGINS` | origines du front | localhost:5173 |
 | `ALLOW_REGISTRATION` | `false` verrouille l'instance après création du compte | true |
 | `AUTO_INGEST` | ingestion du corpus au premier démarrage | true |
+| `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` / `WHOOP_REDIRECT_URI` | intégration Whoop — sans les trois, elle est absente de l'interface | — |
 
 Côté front : `API_ORIGIN` (lue **au démarrage** par `server.mjs`) désigne le backend en
 production. `VITE_API_URL` reste `/api` — en développement c'est Vite qui relaie, en production

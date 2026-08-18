@@ -9,6 +9,7 @@ import type {
   KbDoc,
   KbDocDetail,
   ForecastPayload,
+  Integrations,
   PanicContext,
   PanicEpisodeIn,
   PushKey,
@@ -103,6 +104,17 @@ export const api = {
   // a peut-être pas de réseau, et il ne doit surtout pas y avoir d'attente.
   panique: () => get<PanicContext>('/chat/panique'),
   prevision: () => get<ForecastPayload>('/chat/prevision'),
+
+  // --- Intégrations --------------------------------------------------------
+  integrations: () => get<Integrations>('/integrations'),
+  whoopAuthorize: () => post<{ url: string }>('/integrations/whoop/authorize'),
+  whoopSync: (days = 30) =>
+    post<{ importe: Record<string, number> }>(`/integrations/whoop/sync?days=${days}`),
+  whoopDisconnect: (purge: boolean) =>
+    request<{ supprime: Record<string, number> }>(
+      `/integrations/whoop?purge=${purge ? 'true' : 'false'}`,
+      { method: 'DELETE' },
+    ),
   recordPanic: (episode: PanicEpisodeIn) =>
     post<{ items: ThreadItem[]; bilan: unknown }>('/chat/panique', episode),
 

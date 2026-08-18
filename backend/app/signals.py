@@ -189,6 +189,27 @@ def _fetch(user_id: str, start: dt.date, end: dt.date) -> dict[str, list[dict]]:
         """,
         (user_id, start, end),
     )
+    # Bracelet. Volontairement lu comme n'importe quelle autre source : mêmes seuils
+    # de n, mêmes corrections de multiplicité, même panneau de traçabilité. Une donnée
+    # de capteur n'a aucun statut particulier ici — elle est juste mesurée au lieu
+    # d'être déclarée, et `sleep_source` garde la trace de la différence.
+    wearable = db.query_all(
+        """
+        SELECT entry_date, hrv_rmssd_milli, resting_heart_rate, recovery_score,
+               sleep_hours, respiratory_rate, strain, max_heart_rate
+        FROM wearable_daily
+        WHERE user_id = %s AND entry_date BETWEEN %s AND %s
+        """,
+        (user_id, start, end),
+    )
+    sessions = db.query_all(
+        """
+        SELECT entry_date, sport, max_heart_rate, strain
+        FROM wearable_workouts
+        WHERE user_id = %s AND entry_date BETWEEN %s AND %s
+        """,
+        (user_id, start, end),
+    )
     return {
         "checkins": checkins,
         "logs": logs,
@@ -196,6 +217,8 @@ def _fetch(user_id: str, start: dt.date, end: dt.date) -> dict[str, list[dict]]:
         "assessments": assessments,
         "exposures": exposures,
         "momentary": momentary,
+        "wearable": wearable,
+        "sessions": sessions,
     }
 
 
@@ -283,6 +306,29 @@ def compute(
     exercise_by_day = _daily_field(checkins, "exercise_min")
     avoidance_by_day = _daily_field(checkins, "avoidance_0_10")
 
+    # Séries du bracelet. La VFC nocturne et la fréquence cardiaque de repos sont le
+    # meilleur usage réel de cette source : une dégradation nette par rapport à la base
+    # personnelle est un signal de risque **journalier**, ce qui est exploitable — là où
+    # détecter un épisode ne l'est pas, faute de série temporelle de fréquence cardiaque.
+    hrv_by_day = {
+        r["entry_date"]: float(r["hrv_rmssd_milli"])
+        for r in data["wearable"]
+        if r["hrv_rmssd_milli"] is not None
+    }
+    rhr_by_day = {
+        r["entry_date"]: float(r["resting_heart_rate"])
+        for r in data["wearable"]
+        if r["resting_heart_rate"] is not None
+    }
+    session_hr_by_day: dict[dt.date, float] = {}
+    for row in data["sessions"]:
+        if row["max_heart_rate"] is None:
+            continue
+        day = row["entry_date"]
+        session_hr_by_day[day] = max(
+            float(row["max_heart_rate"]), session_hr_by_day.get(day, 0.0)
+        )
+
     signals: list[dict[str, Any]] = []
 
     # --- Assiduité au check-in ---------------------------------------------
@@ -353,6 +399,10 @@ def compute(
         ("correlation_cafeine_anxiete", "Caféine → anxiété du jour", caffeine_by_day, 0, "cafeine"),
         ("correlation_alcool_anxiete", "Alcool → anxiété du lendemain", alcohol_by_day, 1, "alcool"),
         ("correlation_sport_anxiete", "Activité physique → anxiété du jour", exercise_by_day, 0, "sport_min"),
+        # Bracelet. Décalage 0 pour la VFC : elle est mesurée pendant la nuit qui
+        # précède la journée, donc elle appartient bien au jour qu'elle annonce.
+        ("correlation_vfc_anxiete", "Variabilité cardiaque nocturne → anxiété du jour", hrv_by_day, 0, "vfc_ms"),
+        ("correlation_fc_repos_anxiete", "Fréquence cardiaque de repos → anxiété du jour", rhr_by_day, 0, "fc_repos"),
     ]
 
     # Deux passes obligatoires, et la seconde est celle qui tranche.
@@ -721,6 +771,8 @@ def compute(
         | set(alcohol_by_day)
         | set(exercise_by_day)
         | set(avoidance_by_day)
+        | set(hrv_by_day)
+        | set(session_hr_by_day)
     ):
         day_records[day] = {
             "anxiete": anxiety_by_day.get(day),
@@ -732,6 +784,12 @@ def compute(
             "paniques": 0,
             "exposition": False,
             "respiration": False,
+            # Mesures, distinctes des déclarations. `fc_max_seance` est ce qui rend
+            # testable « séance intense puis crise le lendemain » — le seul usage de
+            # la fréquence cardiaque que cette API autorise.
+            "vfc": hrv_by_day.get(day),
+            "fc_repos": rhr_by_day.get(day),
+            "fc_max_seance": session_hr_by_day.get(day),
         }
     for row in checkins:
         record = day_records.get(row["entry_date"])
@@ -841,6 +899,8 @@ def compute(
         "brut": {
             "checkins": len(checkins),
             "mesures_instantanees": len(momentary),
+            "jours_bracelet": len(data["wearable"]),
+            "seances_bracelet": len(data["sessions"]),
             "hypotheses_testables": tested["testables"],
             "activites_tracees": total_logged,
             "entrees_journal": len(journal),

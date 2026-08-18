@@ -97,7 +97,7 @@ def tick(now_utc: dt.datetime | None = None) -> dict[str, int]:
     Exposé publiquement pour être testable sans attendre l'heure réelle.
     """
     now_utc = now_utc or dt.datetime.now(dt.timezone.utc)
-    stats = {"rappels": 0, "bilans": 0, "candidats": 0}
+    stats = {"rappels": 0, "bilans": 0, "candidats": 0, "synchros": 0}
 
     with db.connection() as conn:
         with conn.cursor() as cur:
@@ -107,6 +107,19 @@ def tick(now_utc: dt.datetime | None = None) -> dict[str, int]:
         return stats  # une autre instance s'en occupe
 
     try:
+        # --- Rattrapage des bracelets ---------------------------------------
+        #
+        # Séparé de la boucle des rappels, et c'est nécessaire : `_candidates()` ne
+        # renvoie que les comptes qui ont un rappel actif **et** un appareil abonné aux
+        # notifications. Une synchronisation de bracelet n'a rien à voir avec ça — la
+        # lier aux notifications aurait produit des comptes connectés à Whoop qui ne se
+        # synchronisent jamais, sans que rien ne le signale.
+        #
+        # Les webhooks font le travail en temps normal ; ce rattrapage couvre ce qu'ils
+        # perdent : serveur redémarré, notification jamais arrivée, connexion refaite.
+        # Une fois par jour suffit, et le journal des notifications le rend idempotent.
+        stats["synchros"] = _sync_wearables(now_utc)
+
         for user in _candidates():
             stats["candidats"] += 1
             local = now_utc.astimezone(_zone(user["timezone"]))
@@ -151,6 +164,43 @@ def tick(now_utc: dt.datetime | None = None) -> dict[str, int]:
                 cur.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,))
 
     return stats
+
+
+def _sync_wearables(now_utc: dt.datetime) -> int:
+    """Resynchronise les bracelets connectés, au plus une fois par jour et par compte.
+
+    Les erreurs sont consignées sur la connexion et n'interrompent pas la boucle : un
+    jeton révoqué chez un utilisateur ne doit pas empêcher les dix-neuf autres de se
+    synchroniser. C'est aussi pour ça que la marque de passage est posée **avant**
+    l'appel — un service en incident ne doit pas être réinterrogé à chaque tic.
+    """
+    from .integrations import whoop
+
+    done = 0
+    rows = db.query_all(
+        """
+        SELECT t.user_id::text AS user_id, u.timezone
+        FROM oauth_tokens t JOIN users u ON u.id = t.user_id
+        WHERE t.provider = 'whoop'
+        """
+    )
+    for row in rows:
+        today = now_utc.astimezone(_zone(row["timezone"])).date()
+        if _already_sent(row["user_id"], "synchro_bracelet", today):
+            continue
+        if not _mark_sent(row["user_id"], "synchro_bracelet", today, {}):
+            continue
+        try:
+            counts = whoop.sync(row["user_id"], days=7)
+            logger.info("Bracelet synchronisé pour %s : %s", row["user_id"], counts)
+            done += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Synchronisation bracelet impossible : %s", exc)
+            db.execute(
+                "UPDATE oauth_tokens SET last_error = %s WHERE user_id = %s AND provider = 'whoop'",
+                (str(exc)[:400], row["user_id"]),
+            )
+    return done
 
 
 def _push_weekly(user_id: str) -> None:

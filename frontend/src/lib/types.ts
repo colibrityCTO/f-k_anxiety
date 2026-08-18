@@ -369,6 +369,23 @@ export type ForecastPayload = {
   }
 }
 
+// --- Intégrations ----------------------------------------------------------
+
+export type Integrations = {
+  whoop: {
+    /** Le serveur a-t-il des identifiants ? Sinon l'intégration n'est pas proposée. */
+    configure: boolean
+    connecte: boolean
+    scopes?: string[]
+    expire_le?: string | null
+    derniere_synchro?: string | null
+    derniere_erreur?: string | null
+    volume?: { jours?: number; seances?: number; dernier_jour?: string | null }
+    /** Ce que cette source peut et ne peut pas faire, dit là où la question se pose. */
+    limite: string
+  }
+}
+
 export type MemoryRow = {
   source_kind: string
   entry_date: string | null

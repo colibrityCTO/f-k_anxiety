@@ -26,6 +26,7 @@ from .routers import (
     checkins,
     exposures,
     insights,
+    integrations,
     journal,
     knowledge,
     program,
@@ -114,6 +115,7 @@ app.include_router(exposures.router)
 app.include_router(insights.router)
 app.include_router(knowledge.router)
 app.include_router(push.router)
+app.include_router(integrations.router)
 
 
 @app.get("/health", tags=["meta"])

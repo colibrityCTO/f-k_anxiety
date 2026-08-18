@@ -767,6 +767,58 @@ def _moment_due(state: dict[str, Any], now: dt.datetime | None = None) -> str | 
     return None
 
 
+def _intense_session_yesterday(user_id: str) -> dict[str, Any] | None:
+    """Demande comment s'est passée la journée après une séance à FC max élevée.
+
+    Formulée comme une **question**, jamais comme une alerte. « Ton cœur est monté à
+    172 hier, comment ça a été aujourd'hui ? » est utile ; « attention, risque de
+    crise » serait une prédiction sans fiabilité, et anxiogène par elle-même.
+
+    Une seule fois par séance : la marque est posée dans le journal des notifications,
+    qui porte déjà la contrainte d'unicité (compte, type, jour).
+    """
+    from .integrations import whoop
+
+    today = dt.date.today()
+    yesterday = today - dt.timedelta(days=1)
+    sessions = whoop.intense_sessions(user_id, yesterday, yesterday)
+    if not sessions:
+        return None
+
+    already = db.query_one(
+        """
+        SELECT 1 FROM notification_log
+        WHERE user_id = %s AND kind = 'suite_seance' AND sent_on = %s
+        """,
+        (user_id, today),
+    )
+    if already is not None:
+        return None
+    db.execute(
+        """
+        INSERT INTO notification_log (user_id, kind, sent_on, detail)
+        VALUES (%s, 'suite_seance', %s, %s)
+        ON CONFLICT (user_id, kind, sent_on) DO NOTHING
+        """,
+        (user_id, today, json.dumps({"seances": len(sessions)})),
+    )
+
+    session = sessions[0]
+    sport = session["sport"] or "ta séance"
+    return {
+        "reply": (
+            f"Hier, {sport} : ton cœur est monté à **{session['max_heart_rate']}**. "
+            "Comment ça a été aujourd'hui ? Un effort intense produit exactement les "
+            "sensations que tu redoutes — chez certains ça aide, chez d'autres ça "
+            "déclenche. C'est en le notant qu'on saura de quel côté tu es."
+        ),
+        "widget": {"type": "maintenant", "prefill": {}, "a_verifier": []},
+        "suggestions": ["Rien de spécial", "Ça a été dur"],
+        "citations": [],
+        "engine": "bracelet",
+    }
+
+
 def opening(user: dict[str, Any]) -> dict[str, Any]:
     """Message d'ouverture du jour. Déterministe : rapide, gratuit, prévisible."""
     state = day_state(user["id"])
@@ -848,6 +900,16 @@ def opening(user: dict[str, Any]) -> dict[str, Any]:
             "widget": {"type": "gad7", "prefill": {}, "a_verifier": []},
             "suggestions": ["Mes chiffres", "Plus tard"],
         }
+
+    # Une séance intense hier, et rien de noté depuis : on demande. C'est ce qui
+    # remplace la détection automatique de crise — impossible avec l'API Whoop, qui
+    # n'expose aucune série de fréquence cardiaque, et de toute façon indésirable :
+    # une fausse alerte de panique est un déclencheur de panique.
+    #
+    # Une question n'a pas ce défaut. Elle ne peut rien annoncer.
+    session = _intense_session_yesterday(user["id"])
+    if session is not None:
+        return session
 
     # Le check-in est fait et rien n'est dû : c'est ici que le programme du jour
     # prend la parole. Sans ça, l'ouverture s'arrêtait à « tu veux faire quoi ? » —

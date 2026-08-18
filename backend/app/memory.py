@@ -37,6 +37,7 @@ SOURCE_LABELS = {
     "checkin": "Check-in",
     "momentary": "Mesure instantanée",
     "panique": "Épisode de panique",
+    "wearable": "Mesures du bracelet",
     "journal": "Journal",
     "assessment": "Échelle",
     "activity": "Activité",

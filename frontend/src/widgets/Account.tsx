@@ -9,7 +9,7 @@ import {
   saveReminder,
   scheduleReminder,
 } from '../lib/reminder'
-import type { EngineStatus, MemoryStats, PushKey } from '../lib/types'
+import type { EngineStatus, Integrations, MemoryStats, PushKey } from '../lib/types'
 import { useAuth } from '../state/AuthContext'
 
 /** Le rappel local ne part que si le check-in du jour manque : sinon c'est du bruit. */
@@ -28,6 +28,9 @@ export default function Account(_props: WidgetProps) {
   const [pushKey, setPushKey] = useState<PushKey | null>(null)
   const [push, setPush] = useState<PushState | null>(null)
   const [time, setTime] = useState(loadReminder().time)
+  const [integrations, setIntegrations] = useState<Integrations | null>(null)
+  const [whoopBusy, setWhoopBusy] = useState(false)
+  const [whoopNote, setWhoopNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [confirmEmail, setConfirmEmail] = useState('')
@@ -45,6 +48,7 @@ export default function Account(_props: WidgetProps) {
   useEffect(() => {
     api.engineStatus().then(setEngine).catch(() => undefined)
     api.memory().then((data) => setMemory(data.stats)).catch(() => undefined)
+    api.integrations().then(setIntegrations).catch(() => undefined)
     void refresh()
   }, [refresh])
 
@@ -209,6 +213,132 @@ export default function Account(_props: WidgetProps) {
           Envoyer un test
         </button>
       </div>
+
+      <div className="divider" />
+
+      <h4 style={{ marginBottom: 6 }}>Bracelet</h4>
+      {/* L'intégration n'apparaît que si le serveur est configuré : un bouton qui mène
+          à une erreur est pire que pas de bouton. */}
+      {!integrations ? (
+        <p className="tiny dim">Chargement…</p>
+      ) : !integrations.whoop.configure ? (
+        <p className="tiny dim">
+          Pas d'identifiants Whoop sur ce serveur — l'intégration est indisponible.
+        </p>
+      ) : (
+        <>
+          <p className="tiny dim">{integrations.whoop.limite}</p>
+          {integrations.whoop.connecte ? (
+            <>
+              <p className="tiny">
+                Connecté
+                {integrations.whoop.volume?.jours
+                  ? ` · ${integrations.whoop.volume.jours} jour(s) importé(s)`
+                  : ''}
+                {integrations.whoop.volume?.seances
+                  ? ` · ${integrations.whoop.volume.seances} séance(s)`
+                  : ''}
+                {integrations.whoop.derniere_synchro
+                  ? ` · dernière synchro le ${integrations.whoop.derniere_synchro.slice(0, 10)}`
+                  : ' · jamais synchronisé'}
+              </p>
+              {integrations.whoop.derniere_erreur && (
+                <p className="frame-note">{integrations.whoop.derniere_erreur}</p>
+              )}
+              <div className="btn-row">
+                <button
+                  className="btn-sm"
+                  disabled={whoopBusy}
+                  onClick={async () => {
+                    setWhoopBusy(true)
+                    setWhoopNote(null)
+                    try {
+                      const result = await api.whoopSync(30)
+                      setWhoopNote(
+                        'Importé : ' +
+                          Object.entries(result.importe)
+                            .map(([key, value]) => `${value} ${key}`)
+                            .join(' · '),
+                      )
+                      setIntegrations(await api.integrations())
+                    } catch (exception) {
+                      setWhoopNote(
+                        exception instanceof Error ? exception.message : 'Synchronisation impossible.',
+                      )
+                    } finally {
+                      setWhoopBusy(false)
+                    }
+                  }}
+                >
+                  Synchroniser maintenant
+                </button>
+                {/* Deux boutons distincts, parce que ce sont deux décisions
+                    différentes : couper l'accès à venir, ou effacer aussi ce qui a
+                    déjà été importé — y compris ses traces en mémoire vectorisée. */}
+                <button
+                  className="btn-sm"
+                  disabled={whoopBusy}
+                  onClick={async () => {
+                    await api.whoopDisconnect(false)
+                    setIntegrations(await api.integrations())
+                    setWhoopNote('Déconnecté. Les données déjà importées sont conservées.')
+                  }}
+                >
+                  Déconnecter
+                </button>
+                <button
+                  className="btn-sm"
+                  disabled={whoopBusy}
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        'Supprimer aussi toutes les données importées et leurs traces en mémoire ? Irréversible.',
+                      )
+                    )
+                      return
+                    const result = await api.whoopDisconnect(true)
+                    setIntegrations(await api.integrations())
+                    setWhoopNote(
+                      'Supprimé : ' +
+                        Object.entries(result.supprime)
+                          .map(([key, value]) => `${value} ${key}`)
+                          .join(' · '),
+                    )
+                  }}
+                >
+                  Déconnecter et tout effacer
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="btn-row">
+              <button
+                className="btn-sm"
+                disabled={whoopBusy}
+                onClick={async () => {
+                  setWhoopBusy(true)
+                  try {
+                    const { url } = await api.whoopAuthorize()
+                    window.open(url, '_blank', 'noopener')
+                    setWhoopNote(
+                      'Autorise l’accès dans l’onglet qui vient de s’ouvrir, puis reviens ici et synchronise.',
+                    )
+                  } catch (exception) {
+                    setWhoopNote(
+                      exception instanceof Error ? exception.message : 'Connexion impossible.',
+                    )
+                  } finally {
+                    setWhoopBusy(false)
+                  }
+                }}
+              >
+                Connecter Whoop
+              </button>
+            </div>
+          )}
+          {whoopNote && <p className="tiny">{whoopNote}</p>}
+        </>
+      )}
 
       <div className="divider" />
 

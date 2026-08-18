@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     allow_registration: bool = Field(default=True, alias="ALLOW_REGISTRATION")
 
     # --- LLM ----------------------------------------------------------------
+    # --- Intégration Whoop -------------------------------------------------
+    #
+    # Sans ces trois valeurs, l'intégration est simplement absente de l'interface :
+    # aucun bouton, aucune route qui échoue à moitié. `has_whoop` en décide.
+    whoop_client_id: str | None = Field(default=None, alias="WHOOP_CLIENT_ID")
+    whoop_client_secret: str | None = Field(default=None, alias="WHOOP_CLIENT_SECRET")
+    # Doit correspondre **exactement** à l'URL déclarée sur developer.whoop.com,
+    # sinon l'échange de code est refusé sans message utile.
+    whoop_redirect_uri: str | None = Field(default=None, alias="WHOOP_REDIRECT_URI")
+
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field(default="claude-opus-5", alias="ANTHROPIC_MODEL")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
@@ -77,6 +87,12 @@ class Settings(BaseSettings):
     @property
     def has_anthropic(self) -> bool:
         return bool(self.anthropic_api_key and self.anthropic_api_key.strip())
+
+    @property
+    def has_whoop(self) -> bool:
+        return bool(
+            self.whoop_client_id and self.whoop_client_secret and self.whoop_redirect_uri
+        )
 
     @property
     def has_openai(self) -> bool:

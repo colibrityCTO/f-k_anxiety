@@ -138,6 +138,42 @@ HYPOTHESES: list[dict[str, Any]] = [
             "sur la fréquence cardiaque maximale quand un bracelet sera branché."
         ),
     },
+    # --- Bracelet -----------------------------------------------------------
+    #
+    # Ces deux hypothèses n'étaient pas testables sans capteur. La seconde est la
+    # reformulation exacte de la demande initiale, dans la seule version que l'API
+    # permet : un maximum par séance, pas une série temporelle.
+    {
+        "id": "vfc_basse_anxiete",
+        "label": "Une variabilité cardiaque basse annonce une journée plus anxieuse",
+        "kind": "moyenne",
+        "lag": 0,
+        "condition": lambda d: d["vfc"] < 40 if _has(d, "vfc") else None,
+        "outcome": lambda d: d.get("anxiete"),
+        "rationale": (
+            "La VFC nocturne reflète le tonus parasympathique, et sa chute précède "
+            "souvent la journée difficile plutôt qu'elle ne la suit. C'est le meilleur "
+            "usage réel du bracelet : un signal de risque journalier, disponible avant "
+            "que la journée commence. Le seuil de 40 ms est grossier et fixé à l'avance ; "
+            "il passera à un percentile personnel quand il y aura assez de nuits."
+        ),
+    },
+    {
+        "id": "fc_max_seance_panique_lendemain",
+        "label": "Une séance au-dessus de 150 battements est suivie d'une crise le lendemain",
+        "kind": "proportion",
+        "lag": 1,
+        "condition": lambda d: d["fc_max_seance"] >= 150 if _has(d, "fc_max_seance") else None,
+        "outcome": lambda d: (d.get("paniques") or 0) > 0,
+        "rationale": (
+            "La formulation littérale de la demande, et la seule que l'API rende "
+            "possible : elle donne le maximum d'une séance, pas la fréquence à la "
+            "minute. Un effort intense produit les sensations redoutées — cœur rapide, "
+            "essoufflement, chaleur — ce qui peut agir comme une exposition "
+            "involontaire, bénéfique chez certains et déclenchante chez d'autres. Le "
+            "signe n'est pas décidé à l'avance."
+        ),
+    },
     # --- Évitement ----------------------------------------------------------
     {
         "id": "evitement_eleve_lendemain",

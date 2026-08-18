@@ -222,6 +222,107 @@ CREATE INDEX IF NOT EXISTS daily_forecasts_user_idx
     ON daily_forecasts (user_id, target_date DESC);
 
 -- ---------------------------------------------------------------------------
+--  Intégrations : jetons OAuth, chiffrés au repos
+--
+--  Un jeton d'accès Whoop donne accès à des mois de données physiologiques
+--  continues. Il est donc chiffré (`app/crypto.py`, clé dérivée de `JWT_SECRET`)
+--  et non stocké en clair — une sauvegarde qui traîne ne doit pas suffire.
+--
+--  `provider_user_id` sert aux webhooks : le service de push identifie le membre
+--  par son identifiant chez lui, pas par le nôtre.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+    id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider          text NOT NULL,                  -- whoop | …
+    provider_user_id  text,
+    access_token      text NOT NULL,                  -- chiffré
+    refresh_token     text,                           -- chiffré
+    scopes            text[] NOT NULL DEFAULT '{}',
+    expires_at        timestamptz,
+    last_sync_at      timestamptz,
+    last_error        text,
+    created_at        timestamptz NOT NULL DEFAULT now(),
+    updated_at        timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, provider)
+);
+CREATE INDEX IF NOT EXISTS oauth_tokens_provider_user_idx
+    ON oauth_tokens (provider, provider_user_id);
+
+-- ---------------------------------------------------------------------------
+--  Données de bracelet, agrégées par jour
+--
+--  Ce que l'API Whoop expose, et **rien de plus** : il n'y a aucune série
+--  temporelle de fréquence cardiaque dans l'API v2, uniquement des agrégats par
+--  cycle ou par séance. Détecter une crise de panique demanderait la FC à la
+--  minute ; c'est hors de portée avec cette source, et la table le reflète.
+--
+--  Séparée de `daily_checkins` volontairement : une valeur de capteur n'écrase
+--  jamais une saisie, et l'inverse non plus. Le check-in garde sa propre colonne
+--  `sleep_hours` avec sa provenance (`sleep_source`).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS wearable_daily (
+    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider            text NOT NULL,
+    entry_date          date NOT NULL,
+    -- Récupération : c'est le meilleur usage réel de cette intégration. Une VFC
+    -- nocturne et une FC de repos nettement dégradées par rapport à la base
+    -- personnelle constituent un signal de risque **journalier** exploitable.
+    hrv_rmssd_milli     numeric(6,2),
+    resting_heart_rate  integer,
+    recovery_score      integer,
+    spo2_percentage     numeric(5,2),
+    skin_temp_celsius   numeric(5,2),
+    -- Sommeil mesuré. `sleep_hours` ici est la mesure du capteur ; la valeur
+    -- déclarée reste dans `daily_checkins`. Les deux coexistent, et c'est le but.
+    sleep_hours         numeric(4,2),
+    sleep_efficiency    numeric(5,2),
+    sleep_performance   numeric(5,2),
+    respiratory_rate    numeric(5,2),
+    -- Charge du cycle : moyenne et maximum, seuls agrégats disponibles.
+    strain              numeric(5,2),
+    average_heart_rate  integer,
+    max_heart_rate      integer,
+    kilojoule           numeric(8,1),
+    raw                 jsonb NOT NULL DEFAULT '{}'::jsonb,
+    updated_at          timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, provider, entry_date)
+);
+CREATE INDEX IF NOT EXISTS wearable_daily_user_idx
+    ON wearable_daily (user_id, entry_date DESC);
+
+-- ---------------------------------------------------------------------------
+--  Séances
+--
+--  C'est ce qui rend testable l'hypothèse « séance intense puis crise le
+--  lendemain » : `max_heart_rate` et `zone_durations` suffisent, alors qu'une
+--  détection d'épisode ne serait pas possible.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS wearable_workouts (
+    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider            text NOT NULL,
+    provider_id         text NOT NULL,
+    entry_date          date NOT NULL,
+    started_at          timestamptz,
+    ended_at            timestamptz,
+    sport               text,
+    strain              numeric(5,2),
+    average_heart_rate  integer,
+    max_heart_rate      integer,
+    kilojoule           numeric(8,1),
+    distance_meter      numeric(10,1),
+    -- Millisecondes par zone de fréquence cardiaque, telles que l'API les renvoie.
+    zone_durations      jsonb NOT NULL DEFAULT '{}'::jsonb,
+    raw                 jsonb NOT NULL DEFAULT '{}'::jsonb,
+    updated_at          timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, provider, provider_id)
+);
+CREATE INDEX IF NOT EXISTS wearable_workouts_user_idx
+    ON wearable_workouts (user_id, entry_date DESC);
+
+-- ---------------------------------------------------------------------------
 --  Journal : pensées (TCC), expositions, inquiétudes, entrées libres
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS journal_entries (
