@@ -314,7 +314,26 @@ def _sanitise(
     return {"reply": reply, "widget": clean_widget, "suggestions": clean_suggestions}
 
 
-def _deterministic(context: dict[str, Any], text: str, cap: capture_mod.Capture) -> dict[str, Any]:
+def _local_reason(user: dict[str, Any], detail: str | None = None) -> str:
+    """Pourquoi la réponse vient des règles fixes plutôt que du modèle.
+
+    Trois causes distinctes, longtemps confondues sous « aucune clé configurée » —
+    ce qui est faux, et trompeur, quand la clé est bien là et que c'est le
+    consentement qui manque ou l'appel qui a échoué.
+    """
+    if not settings.has_llm:
+        return "Aucune clé d'IA n'est configurée sur ce serveur"
+    if not user.get("ai_consent"):
+        return "Tu n'as pas activé l'IA sur ton compte — ouvre le widget Compte"
+    return detail or "Le modèle n'a pas répondu"
+
+
+def _deterministic(
+    context: dict[str, Any],
+    text: str,
+    cap: capture_mod.Capture,
+    reason: str = "Aucune clé d'IA n'est configurée sur ce serveur",
+) -> dict[str, Any]:
     """Décision sans modèle : règles explicites, et on assume de le dire."""
     state = context["state"]
     intents = cap.intents
@@ -402,8 +421,8 @@ def _deterministic(context: dict[str, Any], text: str, cap: capture_mod.Capture)
 
     return {
         "reply": (
-            "Noté, c'est dans ton journal du jour. Aucune clé d'IA n'est configurée sur ce "
-            "serveur : je réponds avec des règles fixes, pas avec un modèle de langage."
+            f"Noté, c'est dans ton journal du jour. {reason} : je réponds avec des règles "
+            "fixes, pas avec un modèle de langage."
         ),
         "widget": {"type": "journal", "prefill": {"free_text": text}, "a_verifier": []},
         "suggestions": [],
@@ -435,17 +454,21 @@ async def respond(user: dict[str, Any], text: str) -> dict[str, Any]:
             result = await llm_client.complete(SYSTEM_PROMPT, _user_prompt(context, text, cap))
             prose, footer = split_reply(result.text)
             if not prose:
-                decision = _deterministic(context, text, cap)
+                decision = _deterministic(
+                    context, text, cap, _local_reason(user, "Le modèle a renvoyé une réponse vide")
+                )
                 engine = f"{result.engine} (sortie vide, repli local)"
             else:
                 decision = _sanitise(footer, cap, reply=prose)
                 engine = result.engine + (" (fallback)" if result.fallback_used else "")
         except llm_client.LLMUnavailable as exc:
             logger.warning("LLM indisponible : %s", exc)
-            decision = _deterministic(context, text, cap)
+            decision = _deterministic(
+                context, text, cap, _local_reason(user, f"Le modèle a échoué ({exc})")
+            )
             engine = "local"
     else:
-        decision = _deterministic(context, text, cap)
+        decision = _deterministic(context, text, cap, _local_reason(user))
         engine = "local"
 
     decision.update({"citations": citations, "engine": engine, "risk": False, "capture": cap})
@@ -482,7 +505,7 @@ async def respond_stream(user: dict[str, Any], text: str):
 
     citations = search.to_citations(context["chunks"])
     if not (bool(user.get("ai_consent")) and settings.has_llm):
-        decision = _deterministic(context, text, cap)
+        decision = _deterministic(context, text, cap, _local_reason(user))
         decision.update({"citations": citations, "engine": "local", "risk": False})
         yield ("engine", "local")
         yield ("token", decision["reply"])
@@ -512,7 +535,9 @@ async def respond_stream(user: dict[str, Any], text: str):
 
     prose, footer = split_reply(buffer)
     if not prose:
-        decision = _deterministic(context, text, cap)
+        decision = _deterministic(
+            context, text, cap, _local_reason(user, "Le modèle a renvoyé une réponse vide")
+        )
         engine = f"{engine} (sortie vide, repli local)"
     else:
         decision = _sanitise(footer, cap, reply=prose)

@@ -28,6 +28,22 @@ _anthropic_chat: Any | None = None
 _openai_chat: Any | None = None
 
 
+# Modèles Claude qui refusent `temperature` (et `top_p`, `top_k`) par une 400.
+# Les envoyer quand même ferait échouer *tous* les appels, et l'application
+# basculerait en local en prétendant qu'aucune clé n'est configurée.
+NO_SAMPLING_PREFIXES = (
+    "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7",
+    "claude-sonnet-5", "claude-fable-5", "claude-mythos-5",
+)
+
+
+def _anthropic_sampling(model: str) -> dict[str, Any]:
+    """Paramètres d'échantillonnage réellement acceptés par ce modèle."""
+    if settings.llm_temperature is None or model.startswith(NO_SAMPLING_PREFIXES):
+        return {}
+    return {"temperature": settings.llm_temperature}
+
+
 class LLMUnavailable(RuntimeError):
     """Aucun fournisseur LLM utilisable (pas de clé, ou tous en échec)."""
 
@@ -62,9 +78,9 @@ def get_anthropic_chat() -> Any | None:
                     model=settings.anthropic_model,
                     api_key=settings.anthropic_api_key,
                     max_tokens=settings.llm_max_tokens,
-                    temperature=settings.llm_temperature,
                     timeout=120,
                     max_retries=2,
+                    **_anthropic_sampling(settings.anthropic_model),
                 )
                 logger.info("Client Anthropic initialisé (%s)", settings.anthropic_model)
     return _anthropic_chat
@@ -83,13 +99,17 @@ def get_openai_chat() -> Any | None:
                     logger.error("langchain-openai non installé : %s", exc)
                     return None
 
+                options: dict[str, Any] = {}
+                if settings.llm_temperature is not None:
+                    options["temperature"] = settings.llm_temperature
+
                 _openai_chat = ChatOpenAI(
                     model=settings.openai_model,
                     api_key=settings.openai_api_key,
                     max_tokens=settings.llm_max_tokens,
-                    temperature=settings.llm_temperature,
                     timeout=120,
                     max_retries=2,
+                    **options,
                 )
                 logger.info("Client OpenAI initialisé (%s)", settings.openai_model)
     return _openai_chat

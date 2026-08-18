@@ -39,8 +39,10 @@ class Settings(BaseSettings):
     anthropic_model: str = Field(default="claude-opus-5", alias="ANTHROPIC_MODEL")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o", alias="OPENAI_MODEL")
-    llm_max_tokens: int = Field(default=2000, alias="LLM_MAX_TOKENS")
-    llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
+    llm_max_tokens: int = Field(default=8000, alias="LLM_MAX_TOKENS")
+    # Laissée vide par défaut : Claude Opus 5 et Sonnet 5 refusent `temperature`
+    # (HTTP 400). Ne la renseigne que pour un modèle qui l'accepte encore.
+    llm_temperature: float | None = Field(default=None, alias="LLM_TEMPERATURE")
 
     # --- Embeddings ---------------------------------------------------------
     embedding_model: str = Field(default="text-embedding-3-large", alias="EMBEDDING_MODEL")
