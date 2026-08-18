@@ -84,6 +84,143 @@ CREATE TABLE IF NOT EXISTS daily_checkins (
 CREATE INDEX IF NOT EXISTS daily_checkins_user_date_idx
     ON daily_checkins (user_id, entry_date DESC);
 
+-- Le check-in est découpé en deux moments, et `moment` existait déjà pour ça.
+--
+-- Un formulaire unique le soir mélangeait trois références temporelles : la nuit
+-- dernière (sommeil), la journée entière (anxiété, café, évitement) et l'instant
+-- présent. Les travaux sur l'agenda du sommeil sont nets là-dessus : le rappel se
+-- dégrade dès que l'agenda n'est pas rempli au réveil, et l'estimation
+-- rétrospective porte un biais non constant. Le sommeil appartient donc au matin.
+
+-- Pic d'anxiété de la journée, distinct de la moyenne. Sous anxiété, la mémoire
+-- retient les pires moments : demander une « moyenne » rétrospective récolte en
+-- réalité un pic déguisé en moyenne. Autant demander les deux et savoir lequel est
+-- lequel. Quand des mesures instantanées existent, les deux sont proposés calculés.
+ALTER TABLE daily_checkins ADD COLUMN IF NOT EXISTS anxiety_peak_0_10 integer;
+DO $$ BEGIN
+    ALTER TABLE daily_checkins ADD CONSTRAINT daily_checkins_peak_range
+        CHECK (anxiety_peak_0_10 BETWEEN 0 AND 10);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Provenance de la durée de sommeil. Sans elle, une corrélation sommeil → anxiété
+-- mélangerait deux instruments de mesure (déclaratif et bracelet) et son
+-- coefficient ne voudrait rien dire. `corrige` = le capteur proposait une valeur,
+-- l'utilisateur l'a rectifiée — ce qui est une information en soi sur le capteur.
+ALTER TABLE daily_checkins ADD COLUMN IF NOT EXISTS sleep_source text;
+DO $$ BEGIN
+    ALTER TABLE daily_checkins ADD CONSTRAINT daily_checkins_sleep_source
+        CHECK (sleep_source IS NULL OR sleep_source IN ('declare', 'capteur', 'corrige'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ---------------------------------------------------------------------------
+--  Mesures instantanées : « comment je me sens maintenant »
+--
+--  Table distincte, et c'est une nécessité, pas un choix d'organisation :
+--  `daily_checkins` porte `UNIQUE (user_id, entry_date, moment)` et ne peut donc
+--  pas accueillir huit mesures dans la même journée.
+--
+--  Ce que cette table débloque : la résolution intra-journée. Avec un seul point
+--  par jour, « café à 16 h → mauvaise nuit » est invisible. Et le soir, le pic et
+--  la moyenne réels se calculent au lieu d'être reconstruits de mémoire.
+--
+--  Jamais demandée par l'application — uniquement à l'initiative de
+--  l'utilisateur. La consultation obsessionnelle de ses propres notes est un
+--  symptôme chez certains : une invite de plus serait une invite de trop.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS momentary_ratings (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rated_at     timestamptz NOT NULL DEFAULT now(),
+    entry_date   date NOT NULL DEFAULT CURRENT_DATE,
+    anxiety_0_10 integer NOT NULL CHECK (anxiety_0_10 BETWEEN 0 AND 10),
+    -- Où / avec qui / en train de quoi. C'est ce qui rend la mesure exploitable :
+    -- un 8 seul n'apprend rien, un 8 « transports, seul » se recoupe.
+    contexts     text[] NOT NULL DEFAULT '{}',
+    note         text,
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS momentary_ratings_user_idx
+    ON momentary_ratings (user_id, entry_date DESC, rated_at DESC);
+
+-- ---------------------------------------------------------------------------
+--  Épisodes de panique — le « log d'attaque »
+--
+--  Les champs viennent du programme 12 semaines, et sa finalité est explicite :
+--  au bout de trois mois, ce log devient la preuve rétrospective que l'anxiété
+--  passe toujours et que la catastrophe annoncée n'est pas arrivée. C'est cette
+--  finalité qui impose `what_actually_happened` et `time_to_relief_min` : sans
+--  eux, il n'y a rien à rendre en agrégat, donc aucune preuve à montrer.
+--
+--  Une ligne ici est déclarée par l'utilisateur, jamais déduite d'un capteur.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS panic_episodes (
+    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id               uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    entry_date            date NOT NULL DEFAULT CURRENT_DATE,
+    started_at            timestamptz NOT NULL DEFAULT now(),
+    ended_at              timestamptz,
+    -- Le triptyque « remarquer → nommer → respirer » : ce qui a précédé, la
+    -- pensée du moment, puis ce qui a été fait.
+    what_preceded         text,
+    body_symptoms         text[] NOT NULL DEFAULT '{}',
+    thought_in_moment     text,
+    -- Les outils utilisés **et leur ordre** : c'est l'ordre qui dira lequel aide.
+    tools_used            jsonb NOT NULL DEFAULT '[]'::jsonb,
+    anxiety_before        integer CHECK (anxiety_before BETWEEN 0 AND 10),
+    anxiety_peak          integer CHECK (anxiety_peak BETWEEN 0 AND 10),
+    anxiety_after         integer CHECK (anxiety_after BETWEEN 0 AND 10),
+    time_to_relief_min    integer CHECK (time_to_relief_min >= 0),
+    what_actually_happened text,
+    -- « Est-ce que ce que tu redoutais est arrivé ? » Une réponse de l'utilisateur,
+    -- pas une inférence de l'application. C'est ce qui permet d'écrire « 0 fois sur
+    -- 14 » comme un fait constaté : l'application ne peut pas juger d'un texte libre
+    -- si la catastrophe a eu lieu, et prétendre le faire serait une invention.
+    feared_outcome_happened boolean,
+    created_at            timestamptz NOT NULL DEFAULT now()
+);
+-- `ALTER` séparé et non colonne du `CREATE TABLE` : ce fichier est rejoué à chaque
+-- démarrage, et `CREATE TABLE IF NOT EXISTS` ne touche pas une table qui existe
+-- déjà. Toute colonne ajoutée après la première création doit passer par ici.
+ALTER TABLE panic_episodes
+    ADD COLUMN IF NOT EXISTS feared_outcome_happened boolean;
+
+CREATE INDEX IF NOT EXISTS panic_episodes_user_idx
+    ON panic_episodes (user_id, entry_date DESC);
+
+-- ---------------------------------------------------------------------------
+--  Prévisions du lendemain
+--
+--  Une ligne est écrite la veille et **jamais réécrite** : la contrainte d'unicité
+--  plus un `ON CONFLICT DO NOTHING` en tiennent la garantie. C'est ce qui rend
+--  l'honnêteté vérifiable — on peut comparer après coup ce qui avait été annoncé à
+--  ce qui est arrivé, et afficher l'erreur réelle. Autoriser la mise à jour
+--  permettrait de « corriger » une prévision ratée, ce qui reviendrait à ne jamais
+--  se tromper.
+--
+--  `baseline` est ce que la persistance (« demain = aujourd'hui ») aurait annoncé.
+--  Sans elle, on ne pourrait pas dire si le modèle apporte quoi que ce soit : la
+--  référence à battre n'est pas le hasard, c'est la persistance — l'essentiel de la
+--  variance d'un jour sur l'autre vient de l'autocorrélation.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS daily_forecasts (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target_date    date NOT NULL,          -- le jour prédit
+    made_on        date NOT NULL,          -- le jour où la prédiction a été faite
+    model          text NOT NULL,          -- persistance | regression | groupe
+    predicted      numeric(4,2) NOT NULL,
+    interval_low   numeric(4,2),
+    interval_high  numeric(4,2),
+    baseline       numeric(4,2),
+    -- Ce qui est entré dans le calcul, pour que le panneau « d'où ça sort » puisse
+    -- montrer les valeurs exactes et pas seulement le résultat.
+    predictors     jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, target_date, model)
+);
+CREATE INDEX IF NOT EXISTS daily_forecasts_user_idx
+    ON daily_forecasts (user_id, target_date DESC);
+
 -- ---------------------------------------------------------------------------
 --  Journal : pensées (TCC), expositions, inquiétudes, entrées libres
 -- ---------------------------------------------------------------------------
@@ -122,6 +259,32 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 );
 CREATE INDEX IF NOT EXISTS journal_entries_user_date_idx
     ON journal_entries (user_id, entry_date DESC);
+
+-- Journal de pensées en trois colonnes : pensée → à combien j'y crois → pensée
+-- plus réaliste. Le pourcentage de croyance manquait, et c'est lui qui mesure le
+-- mouvement propre de la restructuration cognitive : `intensity_before/after`
+-- mesure l'émotion, pas l'adhésion à la pensée. Sans ces deux colonnes, on ne
+-- peut pas savoir si la restructuration marche chez cette personne.
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS belief_before_0_100 integer;
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS belief_after_0_100 integer;
+DO $$ BEGIN
+    ALTER TABLE journal_entries ADD CONSTRAINT journal_entries_belief_range
+        CHECK (
+            (belief_before_0_100 IS NULL OR belief_before_0_100 BETWEEN 0 AND 100)
+            AND (belief_after_0_100 IS NULL OR belief_after_0_100 BETWEEN 0 AND 100)
+        );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Exposition intéroceptive : à quel point les sensations provoquées ressemblent à
+-- celles des crises réelles. C'est ce qui décide **quel exercice compte** pour
+-- cette personne — provoquer un vertige chez quelqu'un dont les crises sont
+-- digestives n'apprend rien. Logique de l'évaluation intéroceptive de Schmidt &
+-- Trakowski, déjà citée dans `app/data/interoceptive.py`.
+ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS similarity_0_10 integer;
+DO $$ BEGIN
+    ALTER TABLE journal_entries ADD CONSTRAINT journal_entries_similarity_range
+        CHECK (similarity_0_10 IS NULL OR similarity_0_10 BETWEEN 0 AND 10);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ---------------------------------------------------------------------------
 --  Catalogue d'activités (semencé depuis app/data/activities.py)
@@ -331,6 +494,33 @@ CREATE TABLE IF NOT EXISTS thread_items (
     created_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS thread_items_user_idx ON thread_items (user_id, seq);
+
+-- Widgets de consultation : ils n'écrivent rien, donc ils n'ont pas d'histoire.
+--
+-- `stats`, `sources`, `compte`… sont des *vues*. Les garder dans le fil empilait
+-- des en-têtes inutiles entre l'utilisateur et son dernier message, définitivement.
+-- Un item éphémère est retiré quand le même type est rouvert, et cesse de l'être
+-- s'il finit par produire quelque chose (une analyse validée est un résultat).
+ALTER TABLE thread_items ADD COLUMN IF NOT EXISTS ephemeral boolean NOT NULL DEFAULT false;
+
+-- Index partiel : le fil affiché ne lit que les items durables et le dernier
+-- éphémère. Le partiel garde l'index petit alors que la table, elle, ne l'est pas.
+CREATE INDEX IF NOT EXISTS thread_items_durable_idx
+    ON thread_items (user_id, seq) WHERE NOT ephemeral;
+
+-- Rattrapage de l'historique déjà en base. Sans lui, la colonne ne corrigerait que
+-- les items à venir et les fils existants resteraient encombrés — or c'est
+-- précisément eux qui posent le problème. Les conditions sont ce qui rend
+-- l'opération sûre : uniquement des widgets de consultation, jamais validés
+-- (`status = 'ouvert'`) et sans aucune valeur enregistrée. Le bilan hebdomadaire
+-- est exclu : sa présence dans le fil est le verrou qui l'empêche d'être redéposé.
+UPDATE thread_items SET ephemeral = true
+WHERE kind = 'widget'
+  AND NOT ephemeral
+  AND status = 'ouvert'
+  AND saved_values = '{}'::jsonb
+  AND widget_type IN ('stats', 'analysis', 'sources', 'memoire', 'rapport', 'account', 'logout')
+  AND coalesce(payload->'prefill'->>'scope', '') <> 'hebdomadaire';
 
 -- ---------------------------------------------------------------------------
 --  Mémoire personnelle vectorisée.

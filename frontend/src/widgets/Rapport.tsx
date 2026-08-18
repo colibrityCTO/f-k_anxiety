@@ -6,6 +6,11 @@ import type { ReportPayload } from '../lib/types'
 
 const KEY_SIGNALS = [
   'tendance_anxiete',
+  // V5 : les hypothèses pré-enregistrées et les tranches horaires. Un professionnel
+  // doit voir ce qui a été testé **et** ce qui n'a pas survécu à la correction — sans
+  // ça, il ne peut pas juger de la sévérité du filtre appliqué.
+  'hypotheses',
+  'tranches_horaires',
   'gad7',
   'adherence',
   'correlation_sommeil_anxiete',

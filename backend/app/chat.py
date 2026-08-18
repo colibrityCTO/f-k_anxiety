@@ -33,6 +33,14 @@ WIDGET_TYPES = {
     "checkin", "breath", "journal", "gad7", "stats", "analysis", "sources", "account", "logout",
     "exposition", "meditation", "memoire", "echelles",
     "interoceptif", "rapport",
+    # V5 — le check-in unique est découpé en trois. `checkin` est conservé : les
+    # items déjà dans le fil gardent leur type, et le passé ne se réécrit pas.
+    "matin", "soir", "maintenant",
+    # Récapitulatif d'un épisode, déposé après la crise. Le modèle ne l'ouvre
+    # jamais lui-même : il n'y a rien à saisir, l'épisode est déjà enregistré.
+    "panique",
+    # Charge du jour et prévision : une consultation, elle n'écrit rien.
+    "prevision",
 }
 
 # Séparateur entre la prose et la décision structurée. Ce format rend le
@@ -41,9 +49,9 @@ WIDGET_TYPES = {
 FOOTER = "---WIDGET---"
 
 PREFILL_FIELDS = {
-    "anxiety_0_10", "mood_0_10", "avoidance_0_10", "sleep_hours", "sleep_quality_0_10",
-    "caffeine_units", "alcohol_units", "exercise_min", "panic_attacks", "main_trigger",
-    "free_text", "situation", "automatic_thought",
+    "anxiety_0_10", "anxiety_peak_0_10", "mood_0_10", "avoidance_0_10", "sleep_hours",
+    "sleep_quality_0_10", "caffeine_units", "alcohol_units", "exercise_min",
+    "panic_attacks", "main_trigger", "free_text", "situation", "automatic_thought",
 }
 
 SYSTEM_PROMPT = """Tu es l'assistant de FUCK ANXIETY, une application française de suivi des troubles anxieux fondée sur le Protocole Unifié de Barlow et les recommandations NICE.
@@ -56,6 +64,7 @@ TON
 RÈGLES ABSOLUES
 1. Tu n'utilises que ce qui t'est fourni : SIGNAUX (déjà calculés), HISTORIQUE (mémoire de l'utilisateur), EXTRAITS DU CORPUS. Tu n'inventes aucun chiffre, aucune étude, aucune référence.
 2. Tu ne recalcules rien. Les chiffres des SIGNAUX sont la vérité, reprends-les tels quels.
+2 bis. Un signal marqué NON RETENU n'a pas survécu à la correction statistique : tu ne le présentes jamais comme une régularité établie. Au mieux : « pas encore assez de données pour le dire ». Tu ne dis pas non plus qu'il n'y a aucun lien — l'absence de preuve n'est pas une preuve d'absence.
 3. Toute affirmation clinique porte la référence de l'extrait utilisé : [1], [2]. Sans extrait, tu ne l'affirmes pas.
 4. Tu distingues l'observation de l'interprétation. Une corrélation n'est jamais présentée comme une cause.
 5. Aucun diagnostic. Aucun conseil sur les médicaments : ni démarrer, ni arrêter, ni ajuster.
@@ -63,7 +72,10 @@ RÈGLES ABSOLUES
 7. Si l'utilisateur évoque des idées suicidaires ou de se faire du mal : tu abandonnes tout le reste, tu le dis simplement, tu renvoies vers le 3114 (France, gratuit, 24 h/24) et le 15 / 112, et tu ne donnes aucun autre conseil.
 
 WIDGETS QUE TU PEUX OUVRIR
-- checkin     : saisir la journée (anxiété, humeur, évitement, sommeil, cafés, paniques)
+- matin       : la nuit et l'instant (sommeil, comment il se sent là, ce qu'il redoute aujourd'hui)
+- soir        : la journée écoulée (pic et moyenne d'anxiété, évitement, cafés, alcool, sport)
+- maintenant  : une mesure instantanée, un seul curseur — quand il dit comment il va *là*
+- checkin     : l'ancien formulaire unique. Ne l'ouvre plus : préfère matin, soir ou maintenant
 - breath      : respiration lente guidée, 5 min à ~6 cycles/min
 - journal     : écrire une entrée (libre ou journal de pensées)
 - echelles    : GAD-7 (hebdomadaire), PHQ-2 (mensuel), évitement (hebdomadaire)
@@ -71,6 +83,7 @@ WIDGETS QUE TU PEUX OUVRIR
 - interoceptif: exposition intéroceptive guidée (hyperventilation, apnée, rotation…) pour la peur des sensations physiques
 - meditation  : pratique guidée (souffle, scan corporel, conscience émotionnelle, relaxation)
 - rapport     : synthèse imprimable pour un professionnel
+- prevision   : la charge du jour, la fourchette prévue pour demain, et la fiabilité réelle du modèle
 - stats       : ses chiffres et ses courbes
 - analysis    : analyse de la période avec ses sources
 - memoire     : recherche dans son propre historique
@@ -104,10 +117,19 @@ def day_state(user_id: str, today: dt.date | None = None) -> dict[str, Any]:
     state = program.recompute_week(user_id, today)
     module = program.module_for_week(state["current_week"])
 
-    checkin = db.query_one(
-        "SELECT anxiety_0_10 FROM daily_checkins WHERE user_id = %s AND entry_date = %s LIMIT 1",
-        (user_id, today),
-    )
+    moments = {
+        row["moment"]: row
+        for row in db.query_all(
+            """
+            SELECT moment, anxiety_0_10, anxiety_peak_0_10, sleep_hours
+            FROM daily_checkins WHERE user_id = %s AND entry_date = %s
+            """,
+            (user_id, today),
+        )
+    }
+    # `checkin` reste la ligne du soir en priorité : c'est elle qui porte l'anxiété
+    # de la journée. À défaut, celle du matin — mieux que rien pour l'affichage.
+    checkin = moments.get("soir") or moments.get("matin")
     last_gad = db.query_one(
         """
         SELECT taken_on, total FROM assessments
@@ -141,9 +163,24 @@ def day_state(user_id: str, today: dt.date | None = None) -> dict[str, Any]:
     exposure_on = last_exposure["last"] if last_exposure else None
     days_since_exposure = (today - exposure_on).days if exposure_on else None
 
+    # Nombre de mesures instantanées du jour : c'est ce qui permet de proposer le
+    # pic et la moyenne calculés le soir, au lieu de les faire reconstruire.
+    momentary = db.query_one(
+        """
+        SELECT count(*) AS n, max(anxiety_0_10) AS pic, avg(anxiety_0_10) AS moyenne
+        FROM momentary_ratings WHERE user_id = %s AND entry_date = %s
+        """,
+        (user_id, today),
+    )
+
     return {
         "date": str(today),
+        # Vrai dès qu'un des deux moments est renseigné : le socle est tenu.
         "checkin_done": checkin is not None,
+        "matin_done": "matin" in moments,
+        "soir_done": "soir" in moments,
+        "mesures_instantanees": int(momentary["n"]) if momentary else 0,
+        "pic_instantane": momentary["pic"] if momentary else None,
         "anxiety_today": checkin["anxiety_0_10"] if checkin else None,
         "week": state["current_week"],
         "module": module["module"],
@@ -198,9 +235,18 @@ def _signals_digest(sig: dict[str, Any]) -> str:
     for signal in sig["signaux"]:
         if signal.get("value") in (None, [], {}) and signal.get("n", 0) == 0:
             continue
-        line = f"- {signal['label']} : {signal.get('value')!r}"
+        # Pour une corrélation, la valeur à commenter est celle des **variations**, pas
+        # le niveau brut : le brut est gonflé par la dérive commune, et le modèle
+        # commenterait un chiffre que la méthode a justement écarté. On lui dit aussi
+        # explicitement si l'association a survécu à la correction de multiplicité.
+        value = signal.get("value")
+        if "value_variations" in signal:
+            value = signal.get("value_variations")
+        line = f"- {signal['label']} : {value!r}"
         if signal.get("delta") is not None:
             line += f" (écart {signal['delta']!r})"
+        if signal.get("retenu") is False and signal.get("p") is not None:
+            line += " [NON RETENU — ne pas présenter comme un fait]"
         line += f" — {signal.get('verdict')} [n={signal.get('n')}]"
         lines.append(line)
     return "\n".join(lines)
@@ -343,12 +389,17 @@ def _deterministic(
 
     if cap.has_values:
         summary = capture_mod.summarise(cap)
+        # Vers quel écran : si la phrase ne parle que de la nuit, c'est le matin.
+        # Sinon le soir, qui porte la journée. Le choix suit ce qui a été extrait,
+        # pas l'heure — quelqu'un qui raconte sa nuit à 18 h parle bien de sa nuit.
+        sleep_only = set(cap.values) <= {"sleep_hours", "sleep_quality_0_10"}
+        target = "matin" if sleep_only and cap.values else "soir"
         return {
             "reply": (
-                f"J'ai compris : **{summary}**. J'ai pré-rempli le check-in — vérifie et valide, "
+                f"J'ai compris : **{summary}**. J'ai pré-rempli — vérifie et valide, "
                 "j'enregistre rien avant."
             ),
-            "widget": {"type": "checkin", "prefill": cap.values, "a_verifier": cap.approximate},
+            "widget": {"type": target, "prefill": cap.values, "a_verifier": cap.approximate},
             "suggestions": ["Mes chiffres", "Respirer 5 min"],
         }
 
@@ -359,6 +410,15 @@ def _deterministic(
                 "l'expiration est la partie qui compte."
             ),
             "widget": {"type": "breath", "prefill": {}, "a_verifier": []},
+            "suggestions": [],
+        }
+    if "prevision" in intents:
+        return {
+            "reply": (
+                "Ta charge du jour et la fourchette de demain. La fourchette est large "
+                "exprès : un chiffre unique serait lu comme une promesse."
+            ),
+            "widget": {"type": "prevision", "prefill": {}, "a_verifier": []},
             "suggestions": [],
         }
     if "stats" in intents:
@@ -418,9 +478,16 @@ def _deterministic(
     if "sources" in intents:
         return {"reply": "Tout ce que je te propose vient de ces fiches. Ouvre celle qui t'intéresse.",
                 "widget": {"type": "sources", "prefill": {}, "a_verifier": []}, "suggestions": []}
+    if "maintenant" in intents:
+        return {
+            "reply": "Un chiffre, c'est tout. Tu peux le faire autant de fois que tu veux.",
+            "widget": {"type": "maintenant", "prefill": {}, "a_verifier": []},
+            "suggestions": [],
+        }
     if "checkin" in intents or not state["checkin_done"]:
-        return {"reply": "On note ta journée.",
-                "widget": {"type": "checkin", "prefill": {}, "a_verifier": []}, "suggestions": []}
+        due = _moment_due(state) or "soir"
+        return {"reply": "On note ta journée." if due == "soir" else "On commence par la nuit.",
+                "widget": {"type": due, "prefill": {}, "a_verifier": []}, "suggestions": []}
 
     return {
         "reply": (
@@ -561,6 +628,145 @@ def _hold_back(buffer: str) -> str:
     return buffer
 
 
+# Quel widget ouvre une activité du programme. `None` est un choix, pas un oubli :
+# régularité du sommeil, activité physique et caféine sont des recommandations
+# d'hygiène, pas des exercices à minuter. Le message porte le conseil et ses
+# preuves, et aucun widget ne s'ouvre — c'est le « conseil » du parcours quotidien.
+SLUG_WIDGETS: dict[str, str | None] = {
+    "checkin-quotidien": "checkin",
+    "respiration-lente-10": "breath",
+    "soupir-physiologique": "breath",
+    "journal-libre": "journal",
+    "journal-pensees": "journal",
+    "temps-inquietude": "journal",
+    "resolution-problemes": "journal",
+    "inventaire-securite": "journal",
+    "objectifs-valeurs": "journal",
+    "plan-prevention-rechute": "journal",
+    "psychoeducation-cycle": "journal",
+    "meditation-souffle": "meditation",
+    "scan-corporel": "meditation",
+    "conscience-emotionnelle": "meditation",
+    "relaxation-musculaire": "meditation",
+    "exposition-interoceptive": "interoceptif",
+    "echelle-exposition": "exposition",
+    "exposition-in-vivo": "exposition",
+    "experience-sociale": "exposition",
+    "exposition-imaginaire": "exposition",
+    "gad7-hebdo": "echelles",
+    "regularite-sommeil": None,
+    "activite-physique": None,
+    "reduction-cafeine": None,
+}
+
+
+def _citation_for(item: dict[str, Any]) -> dict[str, Any]:
+    """La fiche de preuve d'une activité, au format des citations du fil.
+
+    C'est ce qui alimente le panneau « D'OÙ ÇA SORT » : le mécanisme, le niveau de
+    preuve et les références de l'activité, plus les observations personnelles qui
+    l'ont déclenchée. `build_day` produit déjà `triggered_by` dans ce but ; il
+    suffit de le rendre.
+    """
+    activity = item["activity"]
+    triggers = [
+        f"{obs.get('libelle')} : {obs.get('valeur')} — {obs.get('methode')}"
+        for obs in (item.get("triggered_by") or [])
+        if obs.get("libelle")
+    ]
+    return {
+        "doc_id": activity.get("kb_doc_id") or activity["slug"],
+        "titre": activity["title"],
+        "niveau_de_preuve": activity.get("evidence_level"),
+        "categorie": activity.get("category"),
+        "sources": activity.get("sources") or [],
+        "extraits": [activity.get("mechanism"), *triggers],
+        "recuperation": {"origine": "programme du jour", "slot": item["slot"]},
+    }
+
+
+def _decision_for_item(item: dict[str, Any], suggestions: list[str]) -> dict[str, Any]:
+    """Transforme un item du programme du jour en décision du fil.
+
+    La justification vient de `why_for_you`, écrite par `program.py` avec les
+    chiffres de la personne. On ne la reformule pas : elle est déjà personnalisée,
+    et la faire réécrire par un modèle ne ferait qu'ajouter un risque d'invention.
+    """
+    widget_type = SLUG_WIDGETS.get(item["activity"]["slug"], None)
+    activity = item["activity"]
+    duration = activity.get("duration_min")
+    reply = item["why_for_you"]
+    if widget_type is None:
+        reply += "\n\nRien à ouvrir : c'est une habitude à changer, pas un exercice à faire ici."
+    elif duration:
+        reply += f"\n\n**{activity['title']}** — {duration} min."
+    return {
+        "reply": reply,
+        "widget": (
+            {"type": widget_type, "prefill": {}, "a_verifier": []} if widget_type else None
+        ),
+        "suggestions": suggestions,
+        "citations": [_citation_for(item)],
+        "engine": "programme",
+    }
+
+
+def _todays_proposal(user: dict[str, Any], today: dt.date) -> dict[str, Any] | None:
+    """L'item du jour à proposer, choisi dans le programme construit par `program.py`.
+
+    Priorité aux items **adaptatifs** : ce sont ceux que les données de la personne
+    ont déclenchés, donc les seuls dont la justification porte ses propres chiffres.
+    À défaut, un item du module de la semaine. Le socle n'est pas proposé ici : le
+    check-in est déjà traité en amont, et proposer « écris ton journal » sans raison
+    particulière n'apporte rien.
+
+    Renvoie `None` si le programme n'a rien à dire — auquel cas l'appelant garde sa
+    formulation habituelle. Un échec de construction ne doit pas casser l'ouverture
+    du fil : c'est le message d'accueil, il doit toujours arriver.
+    """
+    try:
+        plan = program.build_day(user["id"], user.get("profile") or {}, today)
+    except Exception:  # noqa: BLE001
+        logger.exception("Programme du jour indisponible, ouverture en mode simple")
+        return None
+
+    pending = [
+        item
+        for item in plan.get("items", [])
+        if item.get("status") not in {"fait", "partiel"}
+    ]
+    for slot in ("adaptatif", "module"):
+        for item in pending:
+            if item["slot"] == slot and item["activity"]["slug"] != "checkin-quotidien":
+                return _decision_for_item(item, ["Mes chiffres", "Plus tard"])
+    return None
+
+
+# Bornes des deux créneaux. Avant midi, c'est le matin ; à partir de 17 h, le soir.
+# Entre les deux, on ne réclame rien de neuf : on rattrape ce qui manque, en
+# commençant par le matin — sa question porte sur la nuit, elle reste répondable.
+MORNING_UNTIL = 12
+EVENING_FROM = 17
+
+
+def _moment_due(state: dict[str, Any], now: dt.datetime | None = None) -> str | None:
+    """Lequel des deux moments réclamer, ou `None` si rien n'est dû.
+
+    On ne demande jamais le soir avant 17 h : à midi, la journée n'est pas finie et
+    la faire résumer produirait un chiffre faux — puis il faudrait le corriger, ce
+    qui apprend à l'utilisateur que ses saisies ne comptent pas.
+    """
+    hour = (now or dt.datetime.now()).hour
+    matin_done, soir_done = state["matin_done"], state["soir_done"]
+    if not matin_done and hour < EVENING_FROM:
+        return "matin"
+    if not soir_done and hour >= EVENING_FROM:
+        return "soir"
+    if not matin_done and not soir_done:
+        return "matin"
+    return None
+
+
 def opening(user: dict[str, Any]) -> dict[str, Any]:
     """Message d'ouverture du jour. Déterministe : rapide, gratuit, prévisible."""
     state = day_state(user["id"])
@@ -590,7 +796,7 @@ def opening(user: dict[str, Any]) -> dict[str, Any]:
                     f"{hello} Entretien : check-in hebdomadaire, GAD-7 mensuel, une exposition par "
                     "semaine. Rien d'autre à faire."
                 ),
-                "widget": {"type": "checkin", "prefill": {}, "a_verifier": []},
+                "widget": {"type": "soir", "prefill": {}, "a_verifier": []},
                 "suggestions": ["Mes chiffres", "Mon rapport"],
             }
         return {
@@ -599,19 +805,38 @@ def opening(user: dict[str, Any]) -> dict[str, Any]:
             "suggestions": ["Mes chiffres", "Mon rapport", "Respirer 5 min"],
         }
 
-    if not state["checkin_done"]:
+    # Deux moments, deux questions distinctes. Le sommeil se demande au réveil :
+    # le rappel se dégrade dès que l'agenda n'est pas rempli le matin, et
+    # l'estimation rétrospective porte un biais qui n'est pas constant. La journée
+    # se raconte le soir, quand elle est finie.
+    due = _moment_due(state)
+    if due is not None:
         streak = state["streak"]
-        if streak >= 2:
+        if due == "matin":
             line = (
-                f"T'as pas encore fait ton check-in aujourd'hui. **{streak} jours d'affilée** "
-                "jusqu'ici."
+                f"{hello} La nuit d'abord : combien t'as dormi, et comment tu te sens là. "
+                "Trente secondes."
             )
+            if streak >= 2:
+                line = (
+                    f"**{streak} jours d'affilée.** La nuit d'abord : combien t'as dormi, et "
+                    "comment tu te sens là."
+                )
         else:
-            line = f"{hello} On commence par ta journée — deux minutes, et j'ai de quoi comparer ensuite."
+            line = (
+                "La journée est finie — on la note. Le pic et la moyenne, pas un chiffre unique : "
+                "sous anxiété la mémoire retient les pires moments."
+            )
+            if state["mesures_instantanees"]:
+                line = (
+                    f"T'as noté **{state['mesures_instantanees']} fois** comment tu te sentais "
+                    f"aujourd'hui (pic à **{state['pic_instantane']}/10**). Je te propose le pic et "
+                    "la moyenne calculés — vérifie, corrige si c'est faux."
+                )
         return {
             "reply": line,
-            "widget": {"type": "checkin", "prefill": {}, "a_verifier": []},
-            "suggestions": ["Respirer 5 min", "Comment je vais ?"],
+            "widget": {"type": due, "prefill": {}, "a_verifier": []},
+            "suggestions": ["Comment je me sens là", "Respirer 5 min"],
         }
 
     if state["gad7_due"]:
@@ -623,6 +848,16 @@ def opening(user: dict[str, Any]) -> dict[str, Any]:
             "widget": {"type": "gad7", "prefill": {}, "a_verifier": []},
             "suggestions": ["Mes chiffres", "Plus tard"],
         }
+
+    # Le check-in est fait et rien n'est dû : c'est ici que le programme du jour
+    # prend la parole. Sans ça, l'ouverture s'arrêtait à « tu veux faire quoi ? » —
+    # alors que `build_day` avait déjà calculé quoi proposer, et pourquoi.
+    proposal = _todays_proposal(user, dt.date.today())
+    if proposal is not None:
+        anxiety = state["anxiety_today"]
+        prefix = f"Check-in fait (anxiété **{anxiety}/10**). " if anxiety is not None else ""
+        proposal["reply"] = prefix + proposal["reply"]
+        return proposal
 
     return {
         "reply": f"Check-in fait (anxiété **{state['anxiety_today']}/10**). Tu veux faire quoi ?",

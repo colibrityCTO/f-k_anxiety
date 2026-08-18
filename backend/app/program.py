@@ -284,18 +284,24 @@ def adaptive_items(sig: dict[str, Any], profile: dict[str, Any]) -> list[dict[st
     get = lambda sid: signals_mod.signal_by_id(sig, sid)  # noqa: E731
 
     # 1. Sommeil
+    #
+    # `retenu` est la condition ajoutée en V5, et elle change le comportement : une
+    # corrélation qui ne survit pas à la correction de multiplicité ne déclenche plus
+    # rien. Sans ça, le programme aurait continué de proposer des activités sur la
+    # base de motifs indistinguables du hasard — en les justifiant par des chiffres,
+    # ce qui est la façon la plus efficace de faire croire à un faux.
     sleep_corr = get("correlation_sommeil_anxiete")
     quality_corr = get("correlation_qualite_sommeil")
     for corr in (sleep_corr, quality_corr):
-        if corr and corr.get("value") is not None and corr["value"] <= -0.4:
+        if corr and corr.get("retenu") and corr.get("value") is not None and corr["value"] <= -0.4:
             out.append(
                 {
                     "slug": "regularite-sommeil",
                     "why": (
-                        f"Sur tes {corr['n']} nuits enregistrées, {corr['label'].lower()} : "
-                        f"corrélation de {corr['value']} ({corr['verdict']}). Chez toi, le "
-                        "sommeil est donc un levier — et c'est souvent le plus facile à saisir, "
-                        "parce que les règles sont concrètes et vérifiables."
+                        f"Sur tes {corr['n_brut']} nuits enregistrées, {corr['label'].lower()} : "
+                        f"{corr['verdict']} Chez toi, le sommeil est donc un levier — et c'est "
+                        "souvent le plus facile à saisir, parce que les règles sont concrètes et "
+                        "vérifiables."
                     ),
                     "triggered_by": _obs(corr, limit=8),
                 }
@@ -336,15 +342,20 @@ def adaptive_items(sig: dict[str, Any], profile: dict[str, Any]) -> list[dict[st
 
     # 4. Caféine
     caffeine = get("correlation_cafeine_anxiete")
-    if caffeine and caffeine.get("value") is not None and caffeine["value"] >= 0.35:
+    if (
+        caffeine
+        and caffeine.get("retenu")
+        and caffeine.get("value") is not None
+        and caffeine["value"] >= 0.35
+    ):
         out.append(
             {
                 "slug": "reduction-cafeine",
                 "why": (
-                    f"Tes jours les plus caféinés sont aussi tes jours les plus anxieux "
-                    f"(corrélation {caffeine['value']}, {caffeine['n']} jours). Une corrélation "
-                    "n'est pas une preuve de causalité, mais c'est un test simple et peu coûteux "
-                    "à faire sur deux semaines."
+                    "Tes jours les plus caféinés sont aussi tes jours les plus anxieux — "
+                    f"{caffeine['verdict']} Une corrélation n'est pas une preuve de causalité, "
+                    "mais c'est un test simple et peu coûteux à faire sur deux semaines : "
+                    "baisse d'une tasse et regarde si le chiffre bouge."
                 ),
                 "triggered_by": _obs(caffeine, limit=8),
             }

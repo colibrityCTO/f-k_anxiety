@@ -114,6 +114,22 @@ def execute_returning(
         return dict(row) if row else None
 
 
+def execute_all_returning(
+    sql: str, params: Sequence[Any] | dict[str, Any] | None = None
+) -> list[dict]:
+    """Écrit et renvoie **toutes** les lignes touchées, en validant la transaction.
+
+    Ce qui manquait, et le piège que son absence a coûté : `query_all` s'exécute
+    avec `commit=False`, parce qu'il est fait pour lire. Un `UPDATE ... RETURNING`
+    passé par lui renvoie bien les lignes — le curseur les a produites — puis la
+    connexion est rendue au pool sans validation, et l'écriture est perdue. Le
+    symptôme est trompeur : la fonction a l'air de marcher, elle ne persiste rien.
+    """
+    with cursor() as cur:
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
 # --- pgvector ---------------------------------------------------------------
 
 

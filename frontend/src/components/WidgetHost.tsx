@@ -9,9 +9,14 @@ import Exposition from '../widgets/Exposition'
 import Interoceptif from '../widgets/Interoceptif'
 import Journal from '../widgets/Journal'
 import Logout from '../widgets/Logout'
+import Maintenant from '../widgets/Maintenant'
+import Matin from '../widgets/Matin'
 import Meditation from '../widgets/Meditation'
+import Panique from '../widgets/Panique'
+import Prevision from '../widgets/Prevision'
 import Memoire from '../widgets/Memoire'
 import Rapport from '../widgets/Rapport'
+import Soir from '../widgets/Soir'
 import Sources from '../widgets/Sources'
 import Stats from '../widgets/Stats'
 
@@ -23,6 +28,11 @@ export type WidgetProps = {
 }
 
 const META: Record<WidgetType, { title: string; tag: string }> = {
+  matin: { title: 'Ce matin', tag: 'La nuit · 30 s' },
+  soir: { title: 'Ce soir', tag: 'La journée · 1 min' },
+  maintenant: { title: 'Là, maintenant', tag: 'Un chiffre' },
+  panique: { title: 'Épisode', tag: 'C’est passé' },
+  prevision: { title: 'Demain', tag: 'Charge et fourchette' },
   checkin: { title: 'Check-in du jour', tag: 'Saisie · 2 min' },
   breath: { title: 'Respiration lente', tag: '5 min · ~6 cycles/min' },
   journal: { title: 'Journal', tag: 'Saisie' },
@@ -41,6 +51,11 @@ const META: Record<WidgetType, { title: string; tag: string }> = {
 }
 
 const BODIES: Record<WidgetType, (props: WidgetProps) => JSX.Element> = {
+  matin: Matin,
+  soir: Soir,
+  maintenant: Maintenant,
+  panique: Panique,
+  prevision: Prevision,
   checkin: Checkin,
   breath: Breath,
   journal: Journal,
@@ -64,9 +79,30 @@ function summarise(item: ThreadItem): { label: string; value: string }[] {
   const num = (key: string) => (saved[key] === null || saved[key] === undefined ? null : String(saved[key]))
 
   switch (item.widget_type) {
+    case 'panique':
+      return [
+        { label: 'Pic', value: String(saved.pic ?? '—') },
+        { label: 'Après', value: String(saved.apres ?? '—') },
+        ...(saved.minutes ? [{ label: 'Passé en', value: `${saved.minutes} min` }] : []),
+        ...(saved.redoute_arrive === false
+          ? [{ label: 'Redouté', value: 'pas arrivé' }]
+          : saved.redoute_arrive === true
+            ? [{ label: 'Redouté', value: 'arrivé' }]
+            : []),
+      ]
+    case 'maintenant':
+      return [
+        { label: 'Anxiété', value: `${num('anxiety_0_10') ?? '—'}/10` },
+        ...(Array.isArray(saved.contexts) && saved.contexts.length
+          ? [{ label: 'Contexte', value: (saved.contexts as string[]).join(', ') }]
+          : []),
+      ]
+    case 'matin':
+    case 'soir':
     case 'checkin':
       return [
         ['Anxiété', num('anxiety_0_10')],
+        ['Pic', num('anxiety_peak_0_10')],
         ['Humeur', num('mood_0_10')],
         ['Évitement', num('avoidance_0_10')],
         ['Sommeil', num('sleep_hours') ? `${Number(saved.sleep_hours).toFixed(1)} h` : null],
@@ -135,14 +171,29 @@ export default function WidgetHost({
   const type = (item.widget_type ?? 'checkin') as WidgetType
   const meta = META[type]
   const frozen =
-    item.status === 'valide' || item.status === 'reporte' || item.status === 'remplace'
+    item.status === 'valide' ||
+    item.status === 'reporte' ||
+    item.status === 'remplace' ||
+    item.status === 'perime'
   const tag = !frozen
     ? meta.tag
     : item.status === 'valide'
       ? 'Enregistré'
       : item.status === 'reporte'
         ? 'Reporté'
-        : 'Remplacé'
+        : item.status === 'perime'
+          ? 'Passé'
+          : 'Remplacé'
+
+  /**
+   * Replié, un widget validé montre ses valeurs sur une ligne au lieu d'un simple
+   * titre. C'est ce qui rend le fil relisible : « Check-in · anxiété 7 · sommeil
+   * 5 h » se lit en défilant, un en-tête muet oblige à déplier pour savoir ce
+   * qu'il contient. Les cellules sont celles de `summarise()` — elles existaient
+   * déjà, elles n'étaient rendues qu'une fois le widget ouvert.
+   */
+  const cells = frozen && item.status === 'valide' ? summarise(item) : []
+  const line = cells.map((cell) => `${cell.label} ${cell.value}`).join(' · ')
 
   /**
    * L'en-tête est l'interrupteur du widget : replié, il ne reste que le titre et
@@ -151,7 +202,10 @@ export default function WidgetHost({
    */
   const head = (
     <button type="button" className="w-head w-toggle" aria-expanded={open} onClick={onToggle}>
-      <div className="w-title">{meta.title}</div>
+      <div className="w-title">
+        {meta.title}
+        {!open && line && <span className="w-line">{line}</span>}
+      </div>
       <div className="w-tag">{tag}</div>
       <span className="w-chev">
         <Icon name={open ? 'minus' : 'plus'} size={14} />
@@ -160,7 +214,6 @@ export default function WidgetHost({
   )
 
   if (frozen) {
-    const cells = item.status === 'valide' ? summarise(item) : []
     return (
       <div className={`w${open ? '' : ' w-shut'}`}>
         {head}
@@ -187,7 +240,9 @@ export default function WidgetHost({
                   ? 'Figé : « Corriger » en ouvre un neuf, sans réécrire le passé.'
                   : item.status === 'reporte'
                     ? 'Reporté — ce n’est pas un échec, c’est une donnée.'
-                    : 'Remplacé par une saisie plus récente.'}
+                    : item.status === 'perime'
+                      ? 'La journée est passée : ce formulaire portait sa date. Rien n’a été enregistré.'
+                      : 'Remplacé par une saisie plus récente.'}
               </span>
             </div>
           </>

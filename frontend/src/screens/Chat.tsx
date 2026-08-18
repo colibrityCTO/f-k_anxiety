@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import Composer from '../components/Composer'
 import Markdown from '../components/Markdown'
 import Message from '../components/Message'
 import WidgetHost from '../components/WidgetHost'
 import { api, sendStream } from '../lib/api'
+import { cacheContext, flushQueue, loadContext } from '../lib/panic'
 import { loadReminder, scheduleReminder } from '../lib/reminder'
-import type { DayState, ThreadItem, WidgetType } from '../lib/types'
+import type { DayState, PanicContext, ThreadItem, WidgetType } from '../lib/types'
+import QuickChill from './QuickChill'
 
 /**
  * L'application entière : un fil, une saisie, un lanceur de widgets.
@@ -23,6 +25,37 @@ function lastWidgetId(list: ThreadItem[]): string | null {
   return null
 }
 
+/**
+ * Le jour d'un item, en clair. Le fil n'avait aucun repère temporel : passé
+ * quelques dizaines d'items, on ne savait plus si on lisait hier ou le mois
+ * dernier. C'est la deuxième cause de difficulté de navigation, après
+ * l'empilement des widgets.
+ */
+function dayKey(item: ThreadItem): string {
+  return (item.created_at ?? '').slice(0, 10)
+}
+
+function dayLabel(key: string): string {
+  if (!key) return ''
+  const today = new Date()
+  const asDay = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+      date.getDate(),
+    ).padStart(2, '0')}`
+  if (key === asDay(today)) return "Aujourd'hui"
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (key === asDay(yesterday)) return 'Hier'
+  const [year, month, day] = key.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  return date.toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    ...(date.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
+  })
+}
+
 export default function Chat() {
   const [items, setItems] = useState<ThreadItem[]>([])
   const [state, setState] = useState<DayState | null>(null)
@@ -32,6 +65,14 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null)
   // Un seul widget ouvert à la fois : celui dont l'identifiant est ici.
   const [openId, setOpenId] = useState<string | null>(null)
+  // Pagination : le fil est fait pour durer des années, on n'en charge qu'une page.
+  const [hasMore, setHasMore] = useState(false)
+  const [oldestSeq, setOldestSeq] = useState<number | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  // Mode crise. Le contexte est mis en réserve **à l'ouverture**, quand le réseau
+  // est là : en crise il n'y en a peut-être pas, et il ne doit y avoir aucune attente.
+  const [panic, setPanic] = useState<{ context: PanicContext; stale: number | null } | null>(null)
+  const [panicOpen, setPanicOpen] = useState(false)
   const bottom = useRef<HTMLDivElement | null>(null)
   const view = useRef<HTMLDivElement | null>(null)
   const abort = useRef<AbortController | null>(null)
@@ -104,6 +145,8 @@ export default function Chat() {
       .then((thread) => {
         setItems(thread.items)
         setState(thread.state)
+        setHasMore(thread.has_more)
+        setOldestSeq(thread.oldest_seq)
         setOpenId(lastWidgetId(thread.items))
         stickToBottom()
         // Les polices d'affichage arrivent après le premier rendu : elles
@@ -119,19 +162,86 @@ export default function Chat() {
       .finally(() => setLoading(false))
   }, [stickToBottom])
 
+  /**
+   * Fusionne les items renvoyés par le serveur, et retire les vues qu'il a
+   * retirées. Le tri sur `seq` n'est pas cosmétique : la fusion passe par une
+   * `Map`, dont l'ordre est celui de l'insertion — préfixer une page ancienne
+   * sans retrier la placerait à la fin du fil.
+   */
+  /**
+   * Prépare le mode crise à l'ouverture de l'application, et rejoue les épisodes
+   * qui n'avaient pas pu partir.
+   *
+   * L'ordre compte : on purge d'abord, sinon le bilan mis en réserve ignorerait les
+   * épisodes en attente et afficherait un compte faux. Et l'échec est silencieux au
+   * démarrage : la réserve locale précédente suffit à faire fonctionner l'écran, et
+   * une erreur affichée à l'ouverture pour une fonction qu'on n'utilise pas encore
+   * serait du bruit.
+   */
+  useEffect(() => {
+    let cancelled = false
+    const local = loadContext()
+    if (local) setPanic({ context: local.context, stale: local.ageHours })
+
+    flushQueue()
+      .then(() => api.panique())
+      .then((context) => {
+        if (cancelled) return
+        cacheContext(context)
+        setPanic({ context, stale: null })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const merge = useCallback(
-    (incoming: ThreadItem[]) => {
+    (incoming: ThreadItem[], retired: string[] = []) => {
       setItems((current) => {
         const byId = new Map(current.map((item) => [item.id, item]))
+        retired.forEach((id) => byId.delete(id))
         incoming.forEach((item) => byId.set(item.id, item))
-        return [...byId.values()]
+        return [...byId.values()].sort((a, b) => a.seq - b.seq)
       })
+      if (retired.length) setOpenId((current) => (current && retired.includes(current) ? null : current))
       const last = lastWidgetId(incoming)
       if (last) setOpenId(last)
-      scroll('smooth')
+      if (incoming.length) scroll('smooth')
     },
     [scroll],
   )
+
+  /**
+   * Remonter dans le fil. La hauteur ajoutée est compensée après le rendu, sinon
+   * l'insertion en tête ferait sauter la lecture : le navigateur garde `scrollTop`,
+   * donc tout ce qu'on regardait descend d'un bloc.
+   */
+  const loadMore = useCallback(async () => {
+    if (oldestSeq === null || loadingMore) return
+    setLoadingMore(true)
+    const node = view.current
+    const before = node ? node.scrollHeight - node.scrollTop : 0
+    try {
+      const page = await api.threadBefore(oldestSeq)
+      if (page.items.length) {
+        setItems((current) => {
+          const byId = new Map(current.map((item) => [item.id, item]))
+          page.items.forEach((item) => byId.set(item.id, item))
+          return [...byId.values()].sort((a, b) => a.seq - b.seq)
+        })
+      }
+      setHasMore(page.has_more)
+      setOldestSeq(page.oldest_seq ?? oldestSeq)
+      requestAnimationFrame(() => {
+        if (view.current) view.current.scrollTop = view.current.scrollHeight - before
+      })
+    } catch (exception) {
+      setError(exception instanceof Error ? exception.message : 'Impossible de remonter le fil.')
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, oldestSeq])
 
   /** Envoi d'un message : streamé, pour que la réponse s'écrive au fur et à mesure. */
   const send = useCallback(
@@ -150,6 +260,7 @@ export default function Chat() {
               setStreaming((current) => (current ?? '') + token)
               scroll('smooth')
             },
+            onRetired: (ids) => merge([], ids),
             onItems: (incoming) => {
               setStreaming(null)
               merge(incoming)
@@ -172,11 +283,12 @@ export default function Chat() {
   )
 
   const run = useCallback(
-    async (action: () => Promise<{ items: ThreadItem[] }>) => {
+    async (action: () => Promise<{ items: ThreadItem[]; retired?: string[] }>) => {
       setBusy(true)
       setError(null)
       try {
-        merge((await action()).items)
+        const result = await action()
+        merge(result.items, result.retired ?? [])
         refreshState()
       } catch (exception) {
         setError(exception instanceof Error ? exception.message : 'Action impossible.')
@@ -206,22 +318,40 @@ export default function Chat() {
       </header>
 
       <div className="thread" ref={view}>
-        {items.map((item) =>
-          item.kind === 'widget' ? (
-            <WidgetHost
-              key={item.id}
-              item={item}
-              busy={busy}
-              onSubmit={(values) => submit(item.id, values)}
-              onSkip={() => skip(item.id)}
-              onOpen={openWidget}
-              open={openId === item.id}
-              onToggle={() => setOpenId((current) => (current === item.id ? null : item.id))}
-            />
-          ) : (
-            <Message key={item.id} item={item} busy={busy} onChoose={send} />
-          ),
+        {hasMore && (
+          <button className="btn-sm thread-more" disabled={loadingMore} onClick={loadMore}>
+            {loadingMore ? 'Chargement…' : 'Remonter dans le fil'}
+          </button>
         )}
+
+        {items.map((item, index) => {
+          const key = dayKey(item)
+          const separator =
+            key && key !== (index > 0 ? dayKey(items[index - 1]) : '') ? (
+              <div className="daysep" key={`sep-${key}`}>
+                <span>{dayLabel(key)}</span>
+              </div>
+            ) : null
+
+          return (
+            <Fragment key={item.id}>
+              {separator}
+              {item.kind === 'widget' ? (
+                <WidgetHost
+                  item={item}
+                  busy={busy}
+                  onSubmit={(values) => submit(item.id, values)}
+                  onSkip={() => skip(item.id)}
+                  onOpen={openWidget}
+                  open={openId === item.id}
+                  onToggle={() => setOpenId((current) => (current === item.id ? null : item.id))}
+                />
+              ) : (
+                <Message item={item} busy={busy} onChoose={send} />
+              )}
+            </Fragment>
+          )
+        })}
 
         {streaming !== null && (
           <div className="msg">
@@ -233,7 +363,45 @@ export default function Chat() {
         <div ref={bottom} />
       </div>
 
-      <Composer busy={busy} state={state} onSend={send} onOpenWidget={openWidget} />
+      <Composer
+        busy={busy}
+        state={state}
+        onSend={send}
+        onOpenWidget={openWidget}
+        onPanic={() => setPanicOpen(true)}
+      />
+
+      {panicOpen && panic && (
+        <QuickChill
+          context={panic.context}
+          stale={panic.stale}
+          onClose={(recorded) => {
+            setPanicOpen(false)
+            // Un épisode enregistré a déposé son récapitulatif dans le fil côté
+            // serveur : on recharge plutôt que de le reconstruire côté client, et on
+            // rafraîchit le bilan pour la fois suivante.
+            if (recorded) {
+              api
+                .thread()
+                .then((thread) => {
+                  setItems(thread.items)
+                  setState(thread.state)
+                  setHasMore(thread.has_more)
+                  setOldestSeq(thread.oldest_seq)
+                  stickToBottom()
+                })
+                .catch(() => undefined)
+              api
+                .panique()
+                .then((context) => {
+                  cacheContext(context)
+                  setPanic({ context, stale: null })
+                })
+                .catch(() => undefined)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -8,6 +8,9 @@ import type {
   JournalEntry,
   KbDoc,
   KbDocDetail,
+  ForecastPayload,
+  PanicContext,
+  PanicEpisodeIn,
   PushKey,
   PushStatus,
   PushSubscriptionPayload,
@@ -16,6 +19,7 @@ import type {
   MemoryStats,
   Thread,
   ThreadItem,
+  ThreadPage,
   User,
   WidgetType,
 } from './types'
@@ -73,7 +77,12 @@ const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: 'PATCH', body: JSON.stringify(body) })
 
 type AuthResponse = { access_token: string; expires_in: number; user: User }
-type ItemsResponse = { items: ThreadItem[]; risk?: boolean }
+/**
+ * `retired` : identifiants des vues que le serveur a retirées du fil (consulter
+ * ses chiffres n'est pas un événement de l'historique). Le front doit les enlever
+ * de son propre état, sinon elles resteraient affichées jusqu'au rechargement.
+ */
+type ItemsResponse = { items: ThreadItem[]; retired?: string[]; risk?: boolean }
 
 export const api = {
   // --- Compte (seul endroit hors du fil) ----------------------------------
@@ -88,6 +97,18 @@ export const api = {
 
   // --- Le fil --------------------------------------------------------------
   thread: () => get<Thread>('/chat/thread'),
+  // --- QUICK CHILL --------------------------------------------------------
+  //
+  // Le contexte est chargé **au démarrage**, pas au moment du pic : en crise il n'y
+  // a peut-être pas de réseau, et il ne doit surtout pas y avoir d'attente.
+  panique: () => get<PanicContext>('/chat/panique'),
+  prevision: () => get<ForecastPayload>('/chat/prevision'),
+  recordPanic: (episode: PanicEpisodeIn) =>
+    post<{ items: ThreadItem[]; bilan: unknown }>('/chat/panique', episode),
+
+  /** Page précédente du fil. `before` est le `seq` du plus ancien item affiché. */
+  threadBefore: (before: number, limit = 50) =>
+    get<ThreadPage>(`/chat/thread?before=${before}&limit=${limit}`),
   send: (text: string) => post<ItemsResponse>('/chat/message', { text }),
   openWidget: (type: WidgetType, label?: string, prefill?: Record<string, unknown>) =>
     post<ItemsResponse>('/chat/widget', { type, label, prefill: prefill ?? {} }),
@@ -147,6 +168,8 @@ export type StreamHandlers = {
   onEngine?: (engine: string) => void
   /** Fragments de prose, à afficher au fur et à mesure. */
   onToken?: (token: string) => void
+  /** Vues retirées du fil par le serveur : à enlever de l'état local. */
+  onRetired?: (ids: string[]) => void
   /** Items définitifs (message de l'assistant, widget éventuel). */
   onItems?: (items: ThreadItem[]) => void
   onError?: (message: string) => void
@@ -208,6 +231,9 @@ export async function sendStream(
         break
       case 'token':
         handlers.onToken?.(data)
+        break
+      case 'retired':
+        handlers.onRetired?.(JSON.parse(data) as string[])
         break
       case 'items':
         settled = true

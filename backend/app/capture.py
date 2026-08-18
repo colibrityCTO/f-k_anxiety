@@ -109,12 +109,25 @@ INTENT_PATTERNS: list[tuple[str, str]] = [
     # `J` couvre « j'ai », « jai », « j ai » : l'apostrophe survit à la
     # normalisation, elle n'est ni un accent ni un espace.
     ("breath", r"respir|calme[rz]?\s*moi|j.?\s*angoisse|ca\s*monte|besoin\s*de\s*souffler"),
+    (
+        "prevision",
+        r"prevision|prevoir|pronostic|prediction|demain|ca\s*va\s*etre\s*comment|"
+        r"je\s*vais\s*etre\s*comment|ma\s*charge",
+    ),
     ("stats", r"chiffres?|courbe|graphique|statistiques?|evolution|progres|ou\s*j.?\s*en\s*suis"),
     ("analysis", r"comment\s*je\s*vais|bilan|analyse|resume|fais\s*le\s*point|semaine\s*passee"),
     ("gad7", r"\bgad\b|echelle|questionnaire|test\s*d.?\s*anxiete|score"),
     ("sources", r"pourquoi|d.?\s*ou\s*(?:ca\s*)?(?:sort|vient)|preuve|etude|source|comment\s*ca\s*marche"),
     ("journal", r"journal|noter|ecrire|raconter"),
     ("checkin", r"check\s*-?\s*in|renseigner|ma\s*journee"),
+    # « comment je me sens là » : une mesure instantanée, pas un bilan de journée.
+    # Placé après `checkin` mais avant les autres : « là, maintenant » est explicite.
+    (
+        "maintenant",
+        r"(?:la|maintenant|tout\s*de\s*suite|a\s*l.?\s*instant)\s*(?:je|j.?\s*me)|"
+        r"je\s*me\s*sens\s*(?:la|maintenant)|comment\s*je\s*me\s*sens\s*(?:la|maintenant)|"
+        r"noter\s*(?:mon|un)\s*(?:niveau|chiffre)",
+    ),
     (
         "exposition",
         r"exposition|j.?\s*ai\s*ose|j.?\s*ai\s*affronte|affronter|hierarchie|confronter|"

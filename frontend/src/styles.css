@@ -378,10 +378,18 @@ label .hint {
   opacity: 0.7;
   margin-top: 2px;
 }
+/* `input:not([type])` n'est pas une précaution superflue : un `<input>` sans
+   attribut `type` se comporte comme du texte, mais **ne correspond pas** au
+   sélecteur `input[type='text']` — un sélecteur d'attribut exige l'attribut.
+   Les champs sans type restaient donc à leur largeur intrinsèque (147 px au lieu
+   de toute la colonne). `date` était absent de la liste pour la même raison. */
+input:not([type]),
 input[type='text'],
 input[type='email'],
 input[type='password'],
 input[type='number'],
+input[type='date'],
+input[type='time'],
 textarea,
 select {
   width: 100%;
@@ -945,6 +953,376 @@ th {
   height: var(--b);
   background: currentColor;
   margin: var(--g2) 0;
+}
+
+/* ===========================================================================
+   V5 — LISIBILITÉ DU FIL
+   Trois ajouts, un seul objectif : pouvoir parcourir le fil sans le déplier.
+   =========================================================================== */
+
+/* Résumé d'un widget validé, sur la ligne de son titre. Replié, l'en-tête doit
+   dire ce qu'il contient — sinon il faut ouvrir chaque bloc pour le savoir, ce
+   qui est exactement ce qu'on cherche à éviter. Casse de mot autorisée : le
+   résumé passe à la ligne plutôt que de pousser l'interrupteur hors du cadre. */
+.w-line {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--body);
+  font-size: 0.75rem;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.35;
+  opacity: 0.6;
+}
+/* Ouvert, le résumé disparaît : le corps du widget dit déjà tout, et le répéter
+   dans l'en-tête ferait sauter la mise en page à chaque bascule. */
+.w:not(.w-shut) .w-line {
+  display: none;
+}
+.w-head {
+  align-items: flex-start;
+}
+.w-title {
+  min-width: 0;
+}
+
+/* Valeur en lecture seule : ce que l'application sait déjà et ne redemande pas
+   (sommeil lu sur un bracelet, paniques déclarées sur le moment). Le bouton
+   « Corriger » est dans le flux — un capteur se trompe, et une donnée de santé
+   fausse est pire qu'une donnée absente. */
+.readout {
+  display: flex;
+  align-items: center;
+  gap: var(--g2);
+  margin: var(--g1) 0 0;
+  font-family: var(--display);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* Étiquettes de contexte de la mesure instantanée. Liste fermée : du texte libre
+   ne serait pas comparable d'un jour sur l'autre, donc inexploitable. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--g1);
+}
+.chip {
+  font-family: var(--body);
+  font-size: 0.75rem;
+  padding: 6px 10px;
+  border: var(--b) solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background var(--snap), color var(--snap);
+}
+.chip.on {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* Séparateur de jour. Le trait traverse, l'étiquette s'assoit dessus — le fil
+   n'avait aucun repère temporel. */
+.daysep {
+  display: flex;
+  align-items: center;
+  gap: var(--g2);
+  margin: var(--g3) 0 var(--g2);
+}
+.daysep::before,
+.daysep::after {
+  content: '';
+  flex: 1;
+  height: var(--b);
+  background: currentColor;
+  opacity: 0.35;
+}
+.daysep span {
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+/* « Remonter dans le fil » : en tête, centré, discret. On ne charge plus tout
+   l'historique à l'ouverture. */
+.thread-more {
+  align-self: center;
+  margin-bottom: var(--g2);
+}
+
+/* Fourchette de prévision. Une barre et deux bornes, jamais un chiffre unique au
+   centre : le point serait lu comme la valeur annoncée, alors que c'est l'étendue
+   qui porte l'information. */
+.range {
+  display: flex;
+  align-items: center;
+  gap: var(--g2);
+  margin: var(--g2) 0 var(--g1);
+  font-family: var(--display);
+  font-size: 1.5rem;
+}
+.range-bar {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  border: var(--b) solid currentColor;
+}
+.range-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--paper);
+}
+/* Encadré d'honnêteté : sert à dire ce qui ne va pas (pondération impossible,
+   fourchette mal calibrée) au lieu de le corriger en silence. */
+.frame-note {
+  border: var(--b) solid currentColor;
+  padding: var(--g2);
+  margin: var(--g2) 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.sec {
+  font-family: var(--display);
+  text-transform: uppercase;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  margin: var(--g3) 0 var(--g1);
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  margin: var(--g2) 0;
+}
+.tbl th,
+.tbl td {
+  border: 1px solid currentColor;
+  padding: 5px 8px;
+  text-align: left;
+}
+.tbl th {
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* ===========================================================================
+   QUICK CHILL — l'écran du pic d'anxiété
+   Plein écran, hors du fil : un fil qui défile coûte de l'attention, et en crise
+   on n'en a pas à donner. Contraste maximal, cibles larges, rien à chercher.
+   =========================================================================== */
+.qc {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--ink);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.qc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--g2);
+  border-bottom: var(--bt) solid var(--paper);
+  position: sticky;
+  top: 0;
+  background: var(--ink);
+}
+.qc-eyebrow {
+  font-family: var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 1.25rem;
+}
+.qc-body {
+  flex: 1;
+  padding: var(--g3) var(--g2) var(--g4);
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+}
+.qc-h {
+  font-family: var(--display);
+  text-transform: uppercase;
+  font-size: 2rem;
+  line-height: 1;
+  margin: 0 0 var(--g3);
+}
+/* Le cadrage, en tête et pas en bas de page : « quelque chose à faire pendant que
+   ça passe », et non « respire et ça s'arrête ». La seconde formulation promet un
+   contrôle qui n'existe pas — c'est elle qui crée la dépendance. */
+.qc-framing {
+  border-left: var(--bt) solid var(--paper);
+  padding-left: var(--g2);
+  margin: 0 0 var(--g3);
+  opacity: 0.85;
+}
+.qc-cards {
+  display: grid;
+  gap: var(--g1);
+}
+.qc-card {
+  font-family: var(--display);
+  text-transform: uppercase;
+  font-size: 1.5rem;
+  padding: var(--g2);
+  border: var(--b) solid currentColor;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.qc-card:active {
+  background: var(--paper);
+  color: var(--ink);
+}
+.qc-named {
+  font-family: var(--display);
+  font-size: 1.75rem;
+  text-transform: uppercase;
+  margin: 0 0 var(--g2);
+}
+.qc-reframe {
+  margin: 0 0 var(--g3);
+  line-height: 1.5;
+}
+.qc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--g1);
+  margin-top: var(--g3);
+}
+/* Respiration guidée. L'orbe suit le cycle par une animation CSS et non un
+   minuteur JS : elle reste fluide même si l'onglet est occupé ailleurs. */
+.qc-breath {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--g2);
+  margin: var(--g4) 0;
+}
+.qc-orb {
+  width: 140px;
+  height: 140px;
+  border: var(--bt) solid var(--paper);
+  animation-name: qc-cycle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+@keyframes qc-cycle {
+  0% {
+    transform: scale(0.55);
+  }
+  33% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(0.55);
+  }
+}
+.qc-phase {
+  font-family: var(--display);
+  text-transform: uppercase;
+  font-size: 1.75rem;
+}
+.qc-timer {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+  font-size: 0.875rem;
+}
+.qc-list {
+  display: grid;
+  gap: var(--g1);
+  margin: var(--g3) 0;
+}
+.qc-item {
+  padding: 14px var(--g2);
+  border: var(--b) solid currentColor;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.qc-item.done {
+  background: var(--paper);
+  color: var(--ink);
+}
+/* Porte de contre-indications. Encadrée en épais : ce n'est pas un avertissement
+   décoratif, l'outil ne démarre pas sans, et le serveur refuse de l'enregistrer. */
+.qc-gate {
+  border: var(--bt) solid var(--paper);
+  padding: var(--g2);
+  display: grid;
+  gap: var(--g2);
+  margin: var(--g3) 0;
+}
+.qc-gate p {
+  margin: 0;
+  line-height: 1.5;
+}
+/* Tâche visuo-spatiale. Grille 4×4, cases larges : utilisable d'une main. */
+.qc-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--g2);
+  margin: var(--g3) 0;
+}
+.qc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 64px);
+  gap: var(--g1);
+}
+.qc-cell {
+  width: 64px;
+  height: 64px;
+  border: var(--b) solid currentColor;
+  background: transparent;
+  cursor: pointer;
+}
+.qc-cell.lit {
+  background: var(--paper);
+}
+.qc-cell.on {
+  background: var(--paper);
+  opacity: 0.45;
+}
+/* La preuve accumulée : « N épisodes, durée médiane X, redouté arrivé 0 fois ». */
+.qc-proof {
+  border: var(--b) solid currentColor;
+  padding: var(--g2);
+  margin: var(--g3) 0 0;
+  line-height: 1.5;
+}
+.qc-stale {
+  margin-top: var(--g3);
+}
+/* Le bouton du composer. Inversé en permanence : il doit se trouver sans le
+   chercher, et ne jamais être confondu avec « envoyer ». */
+.panicbtn {
+  flex: 0 0 auto;
+  font-family: var(--display);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.875rem;
+  padding: 0 12px;
+  border: var(--b) solid var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  align-self: stretch;
+}
+.panicbtn:active {
+  background: var(--ink);
+  color: var(--paper);
 }
 
 @media (prefers-reduced-motion: reduce) {

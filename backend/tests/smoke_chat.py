@@ -56,7 +56,11 @@ with TestClient(app) as client:
     thread = show("GET /chat/thread (ouverture proactive)", client.get("/chat/thread", headers=h))
     print("      fil :", items_summary(thread["items"]))
     print("      état :", {k: thread["state"][k] for k in ("checkin_done", "week", "streak", "gad7_due")})
-    checkin_item = next(i for i in thread["items"] if i.get("widget_type") == "checkin")
+    # V5 : l'ouverture propose désormais le moment dû (matin avant 17 h, soir après),
+    # et non plus le formulaire unique. `checkin` reste accepté par l'API.
+    checkin_item = next(
+        i for i in thread["items"] if i.get("widget_type") in {"matin", "soir", "checkin"}
+    )
 
     # Deuxième appel : l'ouverture ne doit pas être dupliquée.
     again = client.get("/chat/thread", headers=h).json()
@@ -73,7 +77,11 @@ with TestClient(app) as client:
         ),
     )
     print("      fil :", items_summary(msg["items"]))
-    proposed = next((i for i in msg["items"] if i.get("widget_type") == "checkin"), None)
+    # « nuit pourrie, anxiété 8… » porte l'anxiété **et** la nuit : ça part donc
+    # vers le soir. Seule une phrase qui ne parle que de sommeil viserait le matin.
+    proposed = next(
+        (i for i in msg["items"] if i.get("widget_type") in {"soir", "matin", "checkin"}), None
+    )
     if proposed:
         print("      pré-remplissage :", proposed["payload"].get("prefill"))
         print("      à vérifier :", proposed["payload"].get("a_verifier"))

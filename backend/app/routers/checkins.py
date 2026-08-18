@@ -14,34 +14,41 @@ router = APIRouter(prefix="/checkins", tags=["checkins"])
 
 _UPSERT = """
 INSERT INTO daily_checkins
-    (user_id, entry_date, moment, anxiety_0_10, mood_0_10, sleep_hours,
-     sleep_quality_0_10, bed_time, wake_time, caffeine_units, alcohol_units,
-     exercise_min, panic_attacks, avoidance_0_10, contexts, main_trigger, note)
+    (user_id, entry_date, moment, anxiety_0_10, anxiety_peak_0_10, mood_0_10,
+     sleep_hours, sleep_quality_0_10, sleep_source, bed_time, wake_time,
+     caffeine_units, alcohol_units, exercise_min, panic_attacks, avoidance_0_10,
+     contexts, main_trigger, note)
 VALUES
-    (%(user_id)s, %(entry_date)s, %(moment)s, %(anxiety_0_10)s, %(mood_0_10)s,
-     %(sleep_hours)s, %(sleep_quality_0_10)s, %(bed_time)s, %(wake_time)s,
-     %(caffeine_units)s, %(alcohol_units)s, %(exercise_min)s, %(panic_attacks)s,
-     %(avoidance_0_10)s, %(contexts)s, %(main_trigger)s, %(note)s)
+    (%(user_id)s, %(entry_date)s, %(moment)s, %(anxiety_0_10)s, %(anxiety_peak_0_10)s,
+     %(mood_0_10)s, %(sleep_hours)s, %(sleep_quality_0_10)s, %(sleep_source)s,
+     %(bed_time)s, %(wake_time)s, %(caffeine_units)s, %(alcohol_units)s,
+     %(exercise_min)s, %(panic_attacks)s, %(avoidance_0_10)s, %(contexts)s,
+     %(main_trigger)s, %(note)s)
 ON CONFLICT (user_id, entry_date, moment) DO UPDATE SET
-    anxiety_0_10 = EXCLUDED.anxiety_0_10,
-    mood_0_10 = EXCLUDED.mood_0_10,
-    sleep_hours = EXCLUDED.sleep_hours,
-    sleep_quality_0_10 = EXCLUDED.sleep_quality_0_10,
+    -- `coalesce(EXCLUDED, existant)` et non `EXCLUDED` seul pour ces colonnes :
+    -- matin et soir sont deux lignes distinctes, mais une correction ne renvoie
+    -- que les champs de son écran. Écraser avec NULL effacerait le reste.
+    anxiety_0_10 = coalesce(EXCLUDED.anxiety_0_10, daily_checkins.anxiety_0_10),
+    anxiety_peak_0_10 = coalesce(EXCLUDED.anxiety_peak_0_10, daily_checkins.anxiety_peak_0_10),
+    mood_0_10 = coalesce(EXCLUDED.mood_0_10, daily_checkins.mood_0_10),
+    sleep_hours = coalesce(EXCLUDED.sleep_hours, daily_checkins.sleep_hours),
+    sleep_quality_0_10 = coalesce(EXCLUDED.sleep_quality_0_10, daily_checkins.sleep_quality_0_10),
+    sleep_source = coalesce(EXCLUDED.sleep_source, daily_checkins.sleep_source),
     bed_time = EXCLUDED.bed_time,
     wake_time = EXCLUDED.wake_time,
-    caffeine_units = EXCLUDED.caffeine_units,
-    alcohol_units = EXCLUDED.alcohol_units,
-    exercise_min = EXCLUDED.exercise_min,
-    panic_attacks = EXCLUDED.panic_attacks,
-    avoidance_0_10 = EXCLUDED.avoidance_0_10,
+    caffeine_units = coalesce(EXCLUDED.caffeine_units, daily_checkins.caffeine_units),
+    alcohol_units = coalesce(EXCLUDED.alcohol_units, daily_checkins.alcohol_units),
+    exercise_min = coalesce(EXCLUDED.exercise_min, daily_checkins.exercise_min),
+    panic_attacks = greatest(EXCLUDED.panic_attacks, daily_checkins.panic_attacks),
+    avoidance_0_10 = coalesce(EXCLUDED.avoidance_0_10, daily_checkins.avoidance_0_10),
     contexts = EXCLUDED.contexts,
     main_trigger = EXCLUDED.main_trigger,
     note = EXCLUDED.note,
     updated_at = now()
-RETURNING id::text, entry_date, moment, anxiety_0_10, mood_0_10, sleep_hours,
-          sleep_quality_0_10, bed_time, wake_time, caffeine_units, alcohol_units,
-          exercise_min, panic_attacks, avoidance_0_10, contexts, main_trigger,
-          note, created_at, updated_at
+RETURNING id::text, entry_date, moment, anxiety_0_10, anxiety_peak_0_10,
+          mood_0_10, sleep_hours, sleep_quality_0_10, sleep_source, bed_time,
+          wake_time, caffeine_units, alcohol_units, exercise_min, panic_attacks,
+          avoidance_0_10, contexts, main_trigger, note, created_at, updated_at
 """
 
 

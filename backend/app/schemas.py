@@ -67,8 +67,14 @@ class CheckinIn(BaseModel):
     entry_date: dt.date | None = None
     moment: Literal["matin", "soir"] = "soir"
     anxiety_0_10: int | None = Field(default=None, ge=0, le=10)
+    # Le pic du jour, distinct de la moyenne : sous anxiété, la mémoire retient les
+    # pires moments, donc une « moyenne » rétrospective est en réalité un pic.
+    anxiety_peak_0_10: int | None = Field(default=None, ge=0, le=10)
     mood_0_10: int | None = Field(default=None, ge=0, le=10)
     sleep_hours: float | None = Field(default=None, ge=0, le=24)
+    # D'où vient la durée de sommeil : déclarée, lue sur un capteur, ou rectifiée
+    # par l'utilisateur. Mélanger les trois rendrait toute corrélation illisible.
+    sleep_source: Literal["declare", "capteur", "corrige"] | None = None
     sleep_quality_0_10: int | None = Field(default=None, ge=0, le=10)
     bed_time: dt.time | None = None
     wake_time: dt.time | None = None
@@ -110,6 +116,11 @@ class JournalIn(BaseModel):
     alternative_thought: str | None = Field(default=None, max_length=4000)
     prediction: str | None = Field(default=None, max_length=2000)
     prediction_probability: int | None = Field(default=None, ge=0, le=100)
+    # Journal de pensées en trois colonnes : à combien j'y crois, avant / après.
+    belief_before_0_100: int | None = Field(default=None, ge=0, le=100)
+    belief_after_0_100: int | None = Field(default=None, ge=0, le=100)
+    # Intéroceptif : ressemblance des sensations provoquées à celles des crises.
+    similarity_0_10: int | None = Field(default=None, ge=0, le=10)
     actual_outcome: str | None = Field(default=None, max_length=4000)
     learning: str | None = Field(default=None, max_length=2000)
     safety_behaviors_dropped: list[str] = Field(default_factory=list)

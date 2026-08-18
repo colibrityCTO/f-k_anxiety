@@ -2,15 +2,24 @@ import { useState } from 'react'
 import Icon from './Icon'
 import type { DayState, WidgetType } from '../lib/types'
 
-/** Les quatorze widgets. Le fil est le seul écran : tout part d'ici. */
+/**
+ * Le lanceur. Le fil est le seul écran : tout part d'ici.
+ *
+ * `matin`, `soir` et `maintenant` remplacent le check-in unique. Les trois sont
+ * dans la grille, et pas seulement proposés : « Là, maintenant » n'est *jamais*
+ * poussé par l'application — c'est sa seule porte d'entrée, et c'est voulu.
+ */
 const TILES: { type: WidgetType; name: string; icon: string }[] = [
-  { type: 'checkin', name: 'Check-in', icon: 'checkin' },
+  { type: 'maintenant', name: 'Là, maintenant', icon: 'checkin' },
+  { type: 'matin', name: 'Ce matin', icon: 'checkin' },
+  { type: 'soir', name: 'Ce soir', icon: 'checkin' },
   { type: 'breath', name: 'Respirer', icon: 'breath' },
   { type: 'journal', name: 'Journal', icon: 'journal' },
   { type: 'exposition', name: 'Exposition', icon: 'expo' },
   { type: 'interoceptif', name: 'Sensations', icon: 'sensations' },
   { type: 'meditation', name: 'Méditation', icon: 'meditation' },
   { type: 'echelles', name: 'Échelles', icon: 'scale' },
+  { type: 'prevision', name: 'Demain', icon: 'analysis' },
   { type: 'stats', name: 'Mes chiffres', icon: 'stats' },
   { type: 'analysis', name: 'Analyse', icon: 'analysis' },
   { type: 'memoire', name: 'Mémoire', icon: 'memory' },
@@ -25,11 +34,14 @@ export default function Composer({
   state,
   onSend,
   onOpenWidget,
+  onPanic,
 }: {
   busy: boolean
   state: DayState | null
   onSend: (text: string) => void
   onOpenWidget: (type: WidgetType, label?: string) => void
+  /** Ouvre le mode crise. Hors de la grille : en crise, un geste suffit. */
+  onPanic: () => void
 }) {
   const [text, setText] = useState('')
   const [open, setOpen] = useState(false)
@@ -65,6 +77,12 @@ export default function Composer({
         <button className="sendbtn" onClick={send} disabled={busy || !text.trim()}>
           OK
         </button>
+        {/* Jamais désactivé, même pendant un envoi : une crise n'attend pas la fin
+            d'une requête. Et hors de la grille des widgets, parce qu'ouvrir un menu
+            puis choisir une tuile fait trois gestes de trop. */}
+        <button className="panicbtn" onClick={onPanic} aria-label="Mode crise — quick chill">
+          CHILL
+        </button>
       </div>
 
       {open && (
@@ -90,6 +108,9 @@ export default function Composer({
               Semaine {state.week} · module {state.module} — {state.module_title}
               {state.streak > 0 ? ` · ${state.streak} jour(s) d'affilée` : ''}
               {state.gad7_last !== null ? ` · GAD-7 ${state.gad7_last}` : ''}
+              {state.mesures_instantanees > 0
+                ? ` · ${state.mesures_instantanees} mesure(s) aujourd'hui`
+                : ''}
             </p>
           )}
         </div>

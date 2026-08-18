@@ -29,6 +29,13 @@ export type WidgetType =
   // V3
   | 'interoceptif'
   | 'rapport'
+  // V5 — le check-in unique éclaté en trois. `checkin` est conservé : les items déjà
+  // dans le fil gardent leur type, et le passé ne se réécrit pas.
+  | 'matin'
+  | 'soir'
+  | 'maintenant'
+  | 'panique'
+  | 'prevision'
 
 export type JournalEntry = {
   id?: string
@@ -163,23 +170,39 @@ export type Citation = {
 /** Un item du fil : soit un message, soit un widget. Jamais autre chose. */
 export type ThreadItem = {
   id: string
+  /** Curseur de pagination du fil : monotone, jamais réutilisé. */
+  seq: number
   role: 'user' | 'assistant'
   kind: 'text' | 'widget'
   content?: string | null
   widget_type?: WidgetType | null
   payload: { prefill?: Record<string, unknown>; a_verifier?: string[] }
   saved_values: Record<string, unknown>
-  /** `remplace` : un widget du même type validé plus tard a pris sa place. */
-  status?: 'ouvert' | 'valide' | 'reporte' | 'remplace' | null
+  /**
+   * `remplace` : un widget du même type validé plus tard a pris sa place.
+   * `perime`   : la journée est passée sans validation — personne ne l'a remplacé.
+   */
+  status?: 'ouvert' | 'valide' | 'reporte' | 'remplace' | 'perime' | null
   suggestions: string[]
   citations: Citation[]
   engine?: string | null
   created_at?: string
+  /**
+   * Vue de consultation : elle n'a écrit aucune donnée. Le serveur n'en renvoie
+   * jamais plus d'une, et la retire dès qu'une autre est ouverte.
+   */
+  ephemeral?: boolean
 }
 
 export type DayState = {
   date: string
+  /** Vrai dès qu'un des deux moments est renseigné. */
   checkin_done: boolean
+  matin_done: boolean
+  soir_done: boolean
+  /** Nombre de « comment je me sens là » notés aujourd'hui. */
+  mesures_instantanees: number
+  pic_instantane: number | null
   anxiety_today: number | null
   week: number
   module: number
@@ -209,11 +232,141 @@ export type MemoryStats = {
   par_source: { source_kind: string; n: number; vectorises: number; depuis: string | null }[]
 }
 
-export type Thread = {
+/** Une page du fil. `oldest_seq` est le curseur à repasser pour remonter. */
+export type ThreadPage = {
   items: ThreadItem[]
   total: number
+  has_more: boolean
+  oldest_seq: number | null
+}
+
+/** La première page : elle seule porte l'état du jour et l'ouverture proactive. */
+export type Thread = ThreadPage & {
   state: DayState
   memoire: MemoryStats
+}
+
+// --- QUICK CHILL -----------------------------------------------------------
+
+export type PanicTool = {
+  slug: string
+  name: string
+  step: 'respirer' | 'ancrer' | 'froid' | 'jeu'
+  seconds: number
+  how: string
+  pattern: { inhale: number; hold: number; exhale: number } | null
+  evidence: string
+  mechanism: string
+  /** La réserve à afficher **avec** l'outil, pas ailleurs. */
+  caveat: string | null
+  sources: SourceRef[]
+  contraindications: string | null
+}
+
+export type PanicBilan = {
+  episodes: number
+  tous_termines: boolean
+  duree_mediane_min: number | null
+  duree_max_min: number | null
+  redoute_renseigne: number
+  redoute_arrive: number
+  outils: [string, number][]
+  derniers: {
+    date: string
+    pic: number | null
+    apres: number | null
+    minutes: number | null
+    ce_qui_est_arrive: string | null
+    redoute_arrive: boolean | null
+  }[]
+  /** Composée côté serveur : c'est un fait construit sur des comptes. */
+  phrase: string | null
+}
+
+export type PanicContext = {
+  cadrage: string
+  zones: string[]
+  pensees: { label: string; reframe: string }[]
+  outils: PanicTool[]
+  sources: SourceRef[]
+  froid_valide_le: string | null
+  bilan: PanicBilan
+  usage_7j: number
+  seuil_usage: number
+  /** Garde-fou anti-comportement de sécurité : usage élevé **et** GAD-7 stable. */
+  alerte_usage: string | null
+}
+
+export type PanicEpisodeIn = {
+  what_preceded?: string | null
+  body_symptoms: string[]
+  thought_in_moment?: string | null
+  tools_used: { slug: string; seconds?: number }[]
+  anxiety_before?: number | null
+  anxiety_peak?: number | null
+  anxiety_after?: number | null
+  time_to_relief_min?: number | null
+  what_actually_happened?: string | null
+  feared_outcome_happened?: boolean | null
+  confirm_cold_contraindications?: boolean
+}
+
+// --- Charge du jour et prévision -------------------------------------------
+
+export type ForecastPayload = {
+  date: string
+  /** La vérité de référence : elle ne se calcule pas. */
+  anxiete_declaree: number | null
+  charge: {
+    /** `null` quand aucune association personnelle n'a survécu à la correction. */
+    valeur: number | null
+    raison: string | null
+    methode?: string
+    composantes: {
+      facteur: string
+      poids: number
+      actif: boolean | null
+      valeur?: number
+      ta_moyenne?: number
+      note?: string
+    }[]
+  }
+  prevision: {
+    target_date: string
+    model: string
+    predicted: number
+    interval_low: number
+    interval_high: number
+    baseline: number
+    predictors: Record<string, number | null>
+    validation: {
+      prédicteurs: string[]
+      n_test: number
+      mae_persistance: number | null
+      mae_regression: number | null
+      /** `persistance` tant que le modèle ne fait pas mieux — et il ne triche pas. */
+      gagnant: string
+      methode: string
+      raison?: string
+    }
+    phrase: string
+  } | null
+  historique: {
+    n: number
+    mae: number | null
+    mae_persistance: number | null
+    /** Part des observations tombées dans la fourchette annoncée. */
+    couverture: number | null
+    detail: {
+      date: string
+      annonce: number
+      observe: number
+      erreur: number
+      erreur_persistance: number | null
+      dans_intervalle: boolean | null
+      modele: string
+    }[]
+  }
 }
 
 export type MemoryRow = {
@@ -249,6 +402,21 @@ export type Signal = {
   method?: string
   observations: Record<string, unknown>[]
   n?: number
+  /**
+   * Corrélations (V5). `value` reste le coefficient en **niveau brut**, conservé pour
+   * compatibilité ; `value_variations` est celui calculé sur les variations d'un jour
+   * sur l'autre, seul défendable — l'anxiété est fortement autocorrélée, et deux
+   * séries qui dérivent ensemble corrèlent sans lien. L'écart entre les deux est en
+   * soi une information à afficher.
+   *
+   * `retenu` est faux quand l'association ne survit pas à la correction de
+   * multiplicité : dans ce cas elle ne doit **pas** être présentée comme un fait.
+   */
+  value_variations?: number | null
+  ic?: [number | null, number | null]
+  p?: number | null
+  retenu?: boolean
+  n_brut?: number
 }
 
 export type SignalsPayload = {

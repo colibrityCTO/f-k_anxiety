@@ -35,6 +35,8 @@ RRF_K = 60
 
 SOURCE_LABELS = {
     "checkin": "Check-in",
+    "momentary": "Mesure instantanée",
+    "panique": "Épisode de panique",
     "journal": "Journal",
     "assessment": "Échelle",
     "activity": "Activité",
@@ -58,6 +60,7 @@ def render_checkin(row: dict[str, Any]) -> str:
             parts.append(f"{label} {value}{unit}")
 
     add("anxiété", row.get("anxiety_0_10"), "/10")
+    add("pic d'anxiété", row.get("anxiety_peak_0_10"), "/10")
     add("humeur", row.get("mood_0_10"), "/10")
     add("évitement", row.get("avoidance_0_10"), "/10")
     add("sommeil", row.get("sleep_hours"), " h")
@@ -69,7 +72,11 @@ def render_checkin(row: dict[str, Any]) -> str:
         parts.append(f"{row['panic_attacks']} attaque(s) de panique")
     if row.get("contexts"):
         parts.append("contextes : " + ", ".join(row["contexts"]))
-    text = f"Check-in du {row.get('entry_date')} — " + ", ".join(parts) + "."
+    # Le moment fait partie du sens : « sommeil 5 h » le matin parle de la nuit
+    # passée, le même chiffre le soir serait une estimation d'avance.
+    moment = row.get("moment")
+    label = {"matin": "Matin du", "soir": "Soir du"}.get(moment, "Check-in du")
+    text = f"{label} {row.get('entry_date')} — " + ", ".join(parts) + "."
     if row.get("main_trigger"):
         text += f" Déclencheur principal : {row['main_trigger']}."
     if row.get("note"):

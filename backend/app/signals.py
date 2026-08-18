@@ -28,7 +28,7 @@ import math
 import re
 from typing import Any
 
-from . import db
+from . import db, stats
 
 # --- Détection de drapeaux rouges -------------------------------------------
 
@@ -86,19 +86,14 @@ def _mean(values: list[float]) -> float | None:
 
 
 def _pearson(xs: list[float], ys: list[float]) -> float | None:
-    """Corrélation de Pearson, sans dépendance externe. None si n < 6."""
+    """Corrélation de Pearson brute. Conservée pour compatibilité.
+
+    Délègue à `stats.pearson` : garder deux implémentations aurait fini par les faire
+    diverger. Le seuil de n a disparu d'ici — c'est `stats.correlation` qui porte la
+    décision de conclure ou non, avec son intervalle de confiance.
+    """
     pairs = [(x, y) for x, y in zip(xs, ys, strict=True) if x is not None and y is not None]
-    n = len(pairs)
-    if n < 6:
-        return None
-    mx = sum(p[0] for p in pairs) / n
-    my = sum(p[1] for p in pairs) / n
-    num = sum((x - mx) * (y - my) for x, y in pairs)
-    dx = math.sqrt(sum((x - mx) ** 2 for x, _ in pairs))
-    dy = math.sqrt(sum((y - my) ** 2 for _, y in pairs))
-    if dx == 0 or dy == 0:
-        return None
-    return num / (dx * dy)
+    return stats.pearson(pairs)
 
 
 def _verdict_correlation(r: float) -> str:
@@ -131,9 +126,9 @@ GAD7_MCID = 4  # Toussaint et al., J Affect Disord 2020
 def _fetch(user_id: str, start: dt.date, end: dt.date) -> dict[str, list[dict]]:
     checkins = db.query_all(
         """
-        SELECT entry_date, moment, anxiety_0_10, mood_0_10, sleep_hours,
-               sleep_quality_0_10, caffeine_units, alcohol_units, exercise_min,
-               panic_attacks, avoidance_0_10, contexts, main_trigger, note
+        SELECT entry_date, moment, anxiety_0_10, anxiety_peak_0_10, mood_0_10,
+               sleep_hours, sleep_quality_0_10, caffeine_units, alcohol_units,
+               exercise_min, panic_attacks, avoidance_0_10, contexts, main_trigger, note
         FROM daily_checkins
         WHERE user_id = %s AND entry_date BETWEEN %s AND %s
         ORDER BY entry_date, moment
@@ -185,23 +180,63 @@ def _fetch(user_id: str, start: dt.date, end: dt.date) -> dict[str, list[dict]]:
         """,
         (user_id,),
     )
+    momentary = db.query_all(
+        """
+        SELECT entry_date, rated_at, anxiety_0_10, contexts, note
+        FROM momentary_ratings
+        WHERE user_id = %s AND entry_date BETWEEN %s AND %s
+        ORDER BY rated_at
+        """,
+        (user_id, start, end),
+    )
     return {
         "checkins": checkins,
         "logs": logs,
         "journal": journal,
         "assessments": assessments,
         "exposures": exposures,
+        "momentary": momentary,
     }
 
 
-def _daily_anxiety(checkins: list[dict]) -> dict[dt.date, float]:
-    """Anxiété moyenne par jour (matin et soir confondus)."""
-    buckets: dict[dt.date, list[float]] = {}
+def _daily_anxiety(
+    checkins: list[dict], momentary: list[dict] | None = None
+) -> dict[dt.date, float]:
+    """L'anxiété **de la journée**, une valeur par jour, par ordre de fiabilité.
+
+    Ne pas moyenner les moments : c'est le piège du découpage. Le chiffre du matin
+    répond à « comment tu te sens là », à 8 h, avant que la journée commence ; celui
+    du soir résume la journée entière. Les additionner produirait une valeur qui ne
+    mesure rien, et toutes les corrélations en dépendent.
+
+    Ordre retenu :
+
+    1. la saisie du **soir**, qui est la mesure de la journée ;
+    2. sinon la **moyenne des mesures instantanées** du jour — plusieurs points
+       valent mieux qu'un souvenir ;
+    3. sinon le **matin**, faute de mieux, en sachant que c'est un instant et pas
+       une journée.
+    """
+    by_moment: dict[dt.date, dict[str, float]] = {}
     for row in checkins:
         if row["anxiety_0_10"] is None:
             continue
-        buckets.setdefault(row["entry_date"], []).append(float(row["anxiety_0_10"]))
-    return {d: sum(v) / len(v) for d, v in buckets.items()}
+        by_moment.setdefault(row["entry_date"], {})[row["moment"]] = float(row["anxiety_0_10"])
+
+    spot: dict[dt.date, list[float]] = {}
+    for row in momentary or []:
+        spot.setdefault(row["entry_date"], []).append(float(row["anxiety_0_10"]))
+
+    out: dict[dt.date, float] = {}
+    for day in set(by_moment) | set(spot):
+        moments = by_moment.get(day, {})
+        if "soir" in moments:
+            out[day] = moments["soir"]
+        elif day in spot:
+            out[day] = sum(spot[day]) / len(spot[day])
+        elif "matin" in moments:
+            out[day] = moments["matin"]
+    return out
 
 
 def _daily_field(checkins: list[dict], field: str) -> dict[dt.date, float]:
@@ -216,8 +251,20 @@ def _daily_field(checkins: list[dict], field: str) -> dict[dt.date, float]:
     return out
 
 
-def compute(user_id: str, end_date: dt.date | None = None, days: int = 21) -> dict[str, Any]:
-    """Calcule l'ensemble des signaux sur une fenêtre glissante."""
+def compute(
+    user_id: str,
+    end_date: dt.date | None = None,
+    days: int = 21,
+    with_days: bool = False,
+) -> dict[str, Any]:
+    """Calcule l'ensemble des signaux sur une fenêtre glissante.
+
+    `with_days` ajoute la clé `jours` : les enregistrements journaliers agrégés, avec
+    des objets `date` en clés. Réservé à un usage **serveur** — la prévision en a
+    besoin et refaire les requêtes pour les reconstruire serait du gaspillage. Les
+    routes qui sérialisent les signaux ne le demandent pas, donc rien ne change pour
+    les clients.
+    """
     end = end_date or dt.date.today()
     start = end - dt.timedelta(days=days - 1)
     data = _fetch(user_id, start, end)
@@ -227,7 +274,8 @@ def compute(user_id: str, end_date: dt.date | None = None, days: int = 21) -> di
     journal = data["journal"]
     assessments = data["assessments"]
 
-    anxiety_by_day = _daily_anxiety(checkins)
+    momentary = data["momentary"]
+    anxiety_by_day = _daily_anxiety(checkins, momentary)
     sleep_by_day = _daily_field(checkins, "sleep_hours")
     sleep_quality_by_day = _daily_field(checkins, "sleep_quality_0_10")
     caffeine_by_day = _daily_field(checkins, "caffeine_units")
@@ -306,38 +354,79 @@ def compute(user_id: str, end_date: dt.date | None = None, days: int = 21) -> di
         ("correlation_alcool_anxiete", "Alcool → anxiété du lendemain", alcohol_by_day, 1, "alcool"),
         ("correlation_sport_anxiete", "Activité physique → anxiété du jour", exercise_by_day, 0, "sport_min"),
     ]
+
+    # Deux passes obligatoires, et la seconde est celle qui tranche.
+    #
+    # En **niveau brut**, deux séries qui dérivent ensemble sur trois semaines
+    # corrèlent fortement sans aucun lien : l'anxiété est très autocorrélée d'un jour
+    # sur l'autre, et une mauvaise période fait monter tout en même temps. En
+    # **différences premières** (la variation de J−1 à J), cette dérive commune
+    # disparaît — il ne reste que « quand ça bouge d'un jour à l'autre, est-ce que ça
+    # bouge ensemble ? ». C'est cette question qui a un sens ici.
+    #
+    # On garde les deux et on affiche les deux : l'écart entre le brut et les
+    # variations est en soi une information. Un r de 0,6 en brut qui tombe à 0,1 en
+    # variations dit exactement une chose — c'était la dérive, pas l'association.
+    computed: list[dict[str, Any]] = []
     for sig_id, label, source, lag, key in correlations:
         pairs = _lagged_pairs(source, lag)
-        r = _pearson([p[1] for p in pairs], [p[2] for p in pairs])
-        if r is None:
-            signals.append(
-                {
-                    "id": sig_id,
-                    "label": label,
-                    "value": None,
-                    "verdict": f"données insuffisantes ({len(pairs)} paires, 6 minimum)",
-                    "method": "corrélation de Pearson, calcul déclenché à partir de 6 paires",
-                    "observations": [
-                        {"date": str(d), key: v, "anxiete": round(a, 1)} for d, v, a in pairs
-                    ],
-                    "n": len(pairs),
-                }
-            )
-            continue
+        raw = stats.correlation([(v, a) for _, v, a in pairs])
+
+        deltas_source = stats.first_differences(source)
+        deltas_anxiety = stats.first_differences(anxiety_by_day)
+        delta_pairs = [
+            (day, dv, deltas_anxiety[day + dt.timedelta(days=lag)])
+            for day, dv in sorted(deltas_source.items())
+            if day + dt.timedelta(days=lag) in deltas_anxiety
+        ]
+        diff = stats.correlation([(dv, da) for _, dv, da in delta_pairs])
+
+        computed.append(
+            {
+                "id": sig_id, "label": label, "key": key, "lag": lag,
+                "pairs": pairs, "raw": raw, "diff": diff,
+            }
+        )
+
+    # Correction de multiplicité sur la famille entière. Cinq associations testées à
+    # 5 % donnent environ une chance sur quatre d'en voir « une » sur des données sans
+    # lien : sans correction, l'application finirait par inventer une régularité, avec
+    # ses chiffres et sa traçabilité — donc de façon parfaitement convaincante.
+    survivors = stats.benjamini_hochberg(
+        [c["diff"]["p"] if c["diff"]["concluant"] else None for c in computed]
+    )
+
+    for entry, survives in zip(computed, survivors, strict=True):
+        raw, diff = entry["raw"], entry["diff"]
+        pairs, key, lag = entry["pairs"], entry["key"], entry["lag"]
         signals.append(
             {
-                "id": sig_id,
-                "label": label,
-                "value": round(r, 3),
-                "verdict": _verdict_correlation(r),
+                "id": entry["id"],
+                "label": entry["label"],
+                # `value` reste la corrélation en niveau : c'est ce que le reste du
+                # code et les règles adaptatives lisent déjà. Le verdict, lui, porte
+                # sur les variations, qui sont la mesure défendable.
+                "value": raw["r"],
+                "value_variations": diff["r"],
+                "ic": [diff["ic_bas"], diff["ic_haut"]],
+                "p": diff["p"],
+                "retenu": bool(survives),
+                "verdict": stats.describe_correlation(diff, bool(survives)),
                 "method": (
-                    "corrélation de Pearson entre la valeur du jour J et l'anxiété du jour "
-                    f"J+{lag}. Attention : une corrélation n'est pas une causalité."
+                    f"corrélation de Pearson entre la valeur du jour J et l'anxiété du jour "
+                    f"J+{lag}, calculée sur les **variations d'un jour sur l'autre** pour "
+                    "retirer la dérive commune (l'anxiété est fortement autocorrélée). "
+                    f"Intervalle de confiance à 95 % par transformée de Fisher, minimum "
+                    f"{stats.MIN_PAIRS} paires, et correction de Benjamini-Hochberg sur les "
+                    f"{len(computed)} associations testées. En niveau brut, sans retirer la "
+                    f"dérive : r = {raw['r']} sur {raw['n']} paires. Une corrélation n'est "
+                    "jamais une causalité."
                 ),
                 "observations": [
                     {"date": str(d), key: v, "anxiete": round(a, 1)} for d, v, a in pairs
                 ],
-                "n": len(pairs),
+                "n": diff["n"],
+                "n_brut": raw["n"],
             }
         )
 
@@ -615,20 +704,144 @@ def compute(user_id: str, end_date: dt.date | None = None, days: int = 21) -> di
         }
     )
 
+    # --- Hypothèses pré-enregistrées ----------------------------------------
+    #
+    # C'est la réponse à « repérer des combinaisons » — sport intense plus niveau
+    # d'anxiété, nuit courte plus caféine — sans fouiller. La liste est fermée et
+    # écrite à l'avance dans `hypotheses.py` : croiser toutes les variables deux à deux
+    # sur une trentaine de jours produirait plusieurs « découvertes » significatives et
+    # fausses, présentées avec leurs chiffres et leur traçabilité, donc crédibles.
+    from . import hypotheses as hypotheses_mod
+
+    day_records: dict[dt.date, dict[str, Any]] = {}
+    for day in sorted(
+        set(anxiety_by_day)
+        | set(sleep_by_day)
+        | set(caffeine_by_day)
+        | set(alcohol_by_day)
+        | set(exercise_by_day)
+        | set(avoidance_by_day)
+    ):
+        day_records[day] = {
+            "anxiete": anxiety_by_day.get(day),
+            "sommeil": sleep_by_day.get(day),
+            "cafeine": caffeine_by_day.get(day),
+            "alcool": alcohol_by_day.get(day),
+            "sport": exercise_by_day.get(day),
+            "evitement": avoidance_by_day.get(day),
+            "paniques": 0,
+            "exposition": False,
+            "respiration": False,
+        }
+    for row in checkins:
+        record = day_records.get(row["entry_date"])
+        if record is not None:
+            record["paniques"] = max(record["paniques"], int(row["panic_attacks"] or 0))
+    for entry in journal:
+        record = day_records.get(entry["entry_date"])
+        if record is not None and entry["kind"] == "exposition":
+            record["exposition"] = True
+    for log in logs:
+        record = day_records.get(log["entry_date"])
+        if record is not None and log["status"] in {"fait", "partiel"}:
+            if log["category"] == "respiration":
+                record["respiration"] = True
+
+    tested = hypotheses_mod.evaluate_all(day_records)
+    retained = [h for h in tested["hypotheses"] if h["retenu"]]
+    signals.append(
+        {
+            "id": "hypotheses",
+            "label": "Hypothèses pré-enregistrées, testées sur tes données",
+            "value": [{"id": h["id"], "libelle": h["label"], "verdict": h["verdict"]} for h in retained],
+            "verdict": (
+                f"{tested['retenues']} retenue(s) sur {tested['testables']} testable(s) "
+                f"({tested['ecrites']} écrites)"
+                if tested["testables"]
+                else f"aucune encore testable — il faut au moins {stats.MIN_GROUP} jours "
+                "de chaque côté d'une condition"
+            ),
+            "method": tested["methode"],
+            "observations": [
+                {
+                    "hypothese": h["label"],
+                    "verdict": h["verdict"],
+                    "retenu": h["retenu"],
+                    "pourquoi_testee": h["pourquoi"],
+                }
+                for h in tested["hypotheses"]
+            ],
+            "n": tested["testables"],
+        }
+    )
+
+    # --- Résolution intra-journée -------------------------------------------
+    #
+    # Ce que les mesures instantanées débloquent : avec un point par jour, « ça monte
+    # toujours en fin d'après-midi » est invisible. Les tranches sont larges (quatre
+    # sur la journée) parce que découper plus fin sur peu de mesures ne produirait
+    # que du bruit présenté comme un motif.
+    SLICES = [("matin", 5, 12), ("après-midi", 12, 17), ("soirée", 17, 22), ("nuit", 22, 5)]
+
+    def _slice_of(hour: int) -> str:
+        for name, low, high in SLICES:
+            if low <= high and low <= hour < high:
+                return name
+            if low > high and (hour >= low or hour < high):
+                return name
+        return "nuit"
+
+    per_slice: dict[str, list[float]] = {}
+    for row in momentary:
+        per_slice.setdefault(_slice_of(row["rated_at"].hour), []).append(
+            float(row["anxiety_0_10"])
+        )
+    slice_means = sorted(
+        ({"tranche": k, "moyenne": round(sum(v) / len(v), 2), "n": len(v)} for k, v in per_slice.items()),
+        key=lambda e: -e["moyenne"],
+    )
+    # Cinq mesures dans une tranche est déjà peu ; en dessous on ne conclut pas.
+    conclusive = [e for e in slice_means if e["n"] >= 5]
+    signals.append(
+        {
+            "id": "tranches_horaires",
+            "label": "Moment de la journée le plus anxieux",
+            "value": conclusive[0]["tranche"] if conclusive else None,
+            "verdict": (
+                f"{conclusive[0]['tranche']} : {conclusive[0]['moyenne']}/10 en moyenne "
+                f"sur {conclusive[0]['n']} mesures"
+                if conclusive
+                else f"pas concluant ({len(momentary)} mesure(s) instantanée(s), 5 minimum par tranche)"
+            ),
+            "method": (
+                "moyenne des mesures instantanées par tranche horaire (matin, après-midi, "
+                "soirée, nuit), à partir de 5 mesures dans la tranche. Les tranches sont larges "
+                "volontairement : plus fin, sur ce volume, ne produirait que du bruit."
+            ),
+            "observations": slice_means,
+            "n": len(momentary),
+        }
+    )
+
     # --- Drapeaux rouges -----------------------------------------------------
     texts = [j.get("free_text") or "" for j in journal]
     texts += [j.get("situation") or "" for j in journal]
     texts += [j.get("worry_text") or "" for j in journal]
     texts += [c.get("note") or "" for c in checkins]
+    texts += [m.get("note") or "" for m in momentary]
     red_flags = detect_red_flags(texts)
 
+    out_extra: dict[str, Any] = {"jours": day_records} if with_days else {}
     return {
+        **out_extra,
         "periode": {"debut": str(start), "fin": str(end), "jours": days},
         "signaux": signals,
         "drapeaux_rouges": red_flags,
         "ressources_urgence": CRISIS_RESOURCES if red_flags else [],
         "brut": {
             "checkins": len(checkins),
+            "mesures_instantanees": len(momentary),
+            "hypotheses_testables": tested["testables"],
             "activites_tracees": total_logged,
             "entrees_journal": len(journal),
             "expositions": len(exposures_logged),

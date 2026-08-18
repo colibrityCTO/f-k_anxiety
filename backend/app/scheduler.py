@@ -168,7 +168,14 @@ def _push_weekly(user_id: str) -> None:
                 "Bilan de la semaine. Je regarde les 4 dernières semaines : ce que les chiffres "
                 "montrent, ce qui a été fait, ce qui ne l'a pas été et pourquoi."
             ),
-            "widget": {"type": "analysis", "prefill": {"scope": "hebdomadaire"}, "a_verifier": []},
+            # Durable : la présence de ce widget dans le fil est ce qui empêche de
+            # redéposer le bilan au tic suivant.
+            "widget": {
+                "type": "analysis",
+                "prefill": {"scope": "hebdomadaire"},
+                "a_verifier": [],
+                "ephemeral": False,
+            },
             "suggestions": ["Plus tard"],
             "engine": "local",
         },
