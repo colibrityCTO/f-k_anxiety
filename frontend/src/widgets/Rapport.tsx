@@ -48,6 +48,7 @@ export default function Rapport(_props: WidgetProps) {
 
   const signals = data.signaux.filter((signal) => KEY_SIGNALS.includes(signal.id))
   const gad7 = data.echelles.filter((row) => row.instrument === 'gad7')
+  const episodes = data.episodes
 
   return (
     <>
@@ -76,7 +77,44 @@ export default function Rapport(_props: WidgetProps) {
           <li>{data.apprentissages.length} apprentissage(s) notés après exposition</li>
           <li>{data.activites.length} activité(s) : faites, non faites, effet moyen mesuré</li>
           <li>Le cadre et les limites, en tête de document</li>
+          {episodes.episodes > 0 && (
+            <li>
+              {episodes.episodes} épisode(s) de panique avec leur durée et leur issue
+            </li>
+          )}
         </ul>
+
+        {/* L'agrégat du log d'attaque, à l'écran comme à l'impression. C'est la
+            fonction que le programme 12 semaines assigne à ce log : au bout de
+            quelques semaines, ces lignes deviennent la preuve que ça passe toujours.
+            Un log qu'on ne rend jamais en agrégat ne prouve rien. */}
+        {episodes.episodes > 0 && (
+          <>
+            <div className="divider" />
+            <h4 style={{ marginBottom: 6 }}>Épisodes de panique</h4>
+            <div className="sum">
+              <div>
+                <span>Épisodes</span>
+                <b>{episodes.episodes}</b>
+              </div>
+              {episodes.duree_mediane_min !== null && (
+                <div>
+                  <span>Durée médiane</span>
+                  <b>{episodes.duree_mediane_min} min</b>
+                </div>
+              )}
+              {episodes.redoute_renseigne > 0 && (
+                <div>
+                  <span>Redouté survenu</span>
+                  <b>
+                    {episodes.redoute_arrive}/{episodes.redoute_renseigne}
+                  </b>
+                </div>
+              )}
+            </div>
+            {episodes.phrase && <p className="small">{episodes.phrase.replace(/\*\*/g, '')}</p>}
+          </>
+        )}
 
         <WhyBox
           label="Ce que ce rapport n'est pas"
@@ -191,6 +229,25 @@ ${table(['Date', 'Score / 21', 'Sévérité'], data.echelles.filter((r) => r.ins
 
 <h2>Autres échelles</h2>
 ${table(['Instrument', 'Date', 'Score', 'Lecture'], data.echelles.filter((r) => r.instrument !== 'gad7').map((r) => [r.instrument.toUpperCase(), r.taken_on, r.total, r.severity]))}
+
+${
+  data.episodes.episodes > 0
+    ? `<h2>Épisodes de panique</h2>
+<p class="dim">Déclarés par la personne au moment de l'épisode, jamais déduits d'un capteur. La colonne « redouté survenu » est sa propre réponse à la question « ce que tu redoutais, c'est arrivé ? » — l'application ne juge pas d'un texte libre.</p>
+<div class="frame">${escape(data.episodes.phrase?.replace(/\*\*/g, '') ?? '')}</div>
+${table(
+  ['Date', 'Pic', 'Après', 'Durée', 'Redouté survenu', 'Ce qui est arrivé'],
+  data.episodes.derniers.map((e) => [
+    e.date,
+    e.pic ?? '—',
+    e.apres ?? '—',
+    e.minutes === null ? '—' : `${e.minutes} min`,
+    e.redoute_arrive === null ? 'non renseigné' : e.redoute_arrive ? 'oui' : 'non',
+    e.ce_qui_est_arrive ?? '—',
+  ]),
+)}`
+    : ''
+}
 
 <h2>Échelle d'expositions</h2>
 ${table(

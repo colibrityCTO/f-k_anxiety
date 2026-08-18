@@ -306,6 +306,148 @@ ACTIVITIES: list[dict[str, Any]] = [
         ],
         "contraindications": None,
     },
+    # --- Travail corporel du soir, et action engagée -----------------------
+    #
+    # Quatre activités venues du programme 12 semaines, qui n'avaient aucun équivalent
+    # au catalogue. Leur niveau de preuve n'est **pas** uniforme et c'est affiché tel
+    # quel : le yoga en général ne montre aucun effet chez les patients dont le trouble
+    # anxieux est diagnostiqué selon le DSM, alors que le yoga nidra est le mieux
+    # soutenu des trois. Les présenter au même niveau aurait été plus simple et faux.
+    {
+        "slug": "etirements-soir",
+        "title": "Étirements du soir",
+        "short_label": "Étirements",
+        "category": "relaxation",
+        "duration_min": 10,
+        "up_module": 1,
+        "evidence_level": "C",
+        "targets": ["somatique", "tension", "sommeil"],
+        "is_core": False,
+        "kb_doc_id": "travail-corporel",
+        "mechanism": (
+            "Relâche la tension musculaire chronique là où elle s'installe sous anxiété : "
+            "nuque, épaules, bas du dos. L'effet visé est local et immédiat, pas un "
+            "traitement de l'anxiété — c'est de l'hygiène du soir, et une transition vers "
+            "le sommeil."
+        ),
+        "sources": [{
+            "label": "Programme 12 semaines — pratique corporelle des semaines 1-2, 10 min avant le coucher",
+            "url": None,
+        }],
+        "instructions": [
+            "Nuque : penchez la tête sur le côté, sans forcer, 30 secondes de chaque côté.",
+            "Épaules : rotations lentes, dix dans chaque sens.",
+            "Bas du dos : allongé, ramenez les genoux vers la poitrine, une minute.",
+            "Respirez lentement pendant chaque étirement — l'expiration relâche plus que la traction.",
+        ],
+        "contraindications": (
+            "En cas de blessure au cou ou au dos, demandez à un kinésithérapeute avant. "
+            "Un étirement ne doit jamais être douloureux."
+        ),
+    },
+    {
+        "slug": "yoga-doux",
+        "title": "Yoga doux, centré sur le souffle",
+        "short_label": "Yoga doux",
+        "category": "relaxation",
+        "duration_min": 15,
+        "up_module": 3,
+        "evidence_level": "C",
+        "targets": ["somatique", "tension", "stress"],
+        "is_core": False,
+        "kb_doc_id": "travail-corporel",
+        "mechanism": (
+            "Combine étirement, attention portée au souffle et postures tenues. Le mécanisme "
+            "plausible est celui de la relaxation appliquée, avec en plus une exposition "
+            "douce aux sensations corporelles."
+        ),
+        "sources": [{
+            "label": (
+                "Méta-analyse d'essais randomisés : effets petits à court terme, mais "
+                "**aucun effet retrouvé** chez les patients dont le trouble anxieux est "
+                "diagnostiqué selon les critères du DSM"
+            ),
+            "url": "https://pubmed.ncbi.nlm.nih.gov/29697885/",
+        }],
+        "instructions": [
+            "Chat-vache : dix respirations, en suivant le mouvement avec le souffle.",
+            "Posture de l'enfant : une à deux minutes, respiration dans le dos.",
+            "Torsions allongées : une minute de chaque côté.",
+            "Terminez allongé, deux minutes, sans rien faire.",
+        ],
+        "contraindications": (
+            "Le niveau de preuve est faible et honnêtement décevant : la méta-analyse de "
+            "référence ne retrouve aucun effet chez les personnes dont le trouble est "
+            "diagnostiqué selon le DSM. À faire si ça te fait du bien, pas parce que ça "
+            "traiterait l'anxiété. Ce n'est pas un substitut aux expositions."
+        ),
+    },
+    {
+        "slug": "yoga-nidra",
+        "title": "Yoga nidra",
+        "short_label": "Yoga nidra",
+        "category": "meditation",
+        "duration_min": 20,
+        "up_module": 5,
+        "evidence_level": "B",
+        "targets": ["somatique", "stress", "sommeil", "acceptation"],
+        "is_core": False,
+        "kb_doc_id": "travail-corporel",
+        "mechanism": (
+            "Relaxation guidée allongée, avec balayage systématique du corps. Entraîne la "
+            "capacité à rester avec des sensations inconfortables sans lutter contre elles "
+            "— ce qui est la compétence visée par la phase d'acceptation."
+        ),
+        "sources": [{
+            "label": (
+                "Méta-analyse 2026 : 73 essais, 5 201 participants — effets importants sur "
+                "le stress, l'anxiété et la dépression, y compris contre comparateurs actifs"
+            ),
+            "url": "https://nyaspubs.onlinelibrary.wiley.com/doi/full/10.1111/nyas.70149",
+        }],
+        "instructions": [
+            "Allongé sur le dos, sans bouger pendant toute la séance.",
+            "Portez l'attention successivement sur chaque partie du corps, sans chercher à la détendre.",
+            "Quand une sensation désagréable apparaît, restez avec elle — c'est l'exercice.",
+            "Si vous vous endormez, ce n'est pas un échec.",
+        ],
+        "contraindications": None,
+    },
+    {
+        "slug": "action-engagee",
+        "title": "Agir malgré",
+        "short_label": "Action engagée",
+        "category": "comportemental",
+        "duration_min": 5,
+        "up_module": 7,
+        "evidence_level": "B",
+        "targets": ["evitement", "acceptation", "valeurs"],
+        "is_core": False,
+        "kb_doc_id": "acceptation-action-engagee",
+        "mechanism": (
+            "Change la cible : l'objectif n'est plus de faire baisser l'anxiété mais d'agir "
+            "en direction de ce qui compte, avec elle. Chercher à supprimer l'anxiété est "
+            "précisément ce qui l'entretient — l'évitement soulage sur le moment et coûte "
+            "ensuite."
+        ),
+        "sources": [{
+            "label": (
+                "Méta-analyse d'essais randomisés de l'ACT : réduction significative de "
+                "l'anxiété (SMD ≈ −0,64), mais **comparable à la TCC et non supérieure** ; "
+                "risque de biais élevé dans les essais inclus"
+            ),
+            "url": "https://pubmed.ncbi.nlm.nih.gov/39303882/",
+        }],
+        "instructions": [
+            "Le soir, réponds à une seule question : qu'est-ce que j'ai fait aujourd'hui qui compte pour moi, même en étant anxieux ?",
+            "Note-le, même si c'est minuscule.",
+            "Ne note pas ce que tu as évité — c'est le check-in qui s'en occupe.",
+        ],
+        "contraindications": (
+            "L'ACT n'est pas supérieure à la TCC : c'est un cadre différent, pas un cadre "
+            "meilleur. Elle vient en complément des expositions, jamais à leur place."
+        ),
+    },
     {
         "slug": "relaxation-musculaire",
         "title": "Relaxation musculaire progressive",

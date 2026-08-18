@@ -48,6 +48,11 @@ export type JournalEntry = {
   body_sensations: string[]
   intensity_before?: number | null
   intensity_after?: number | null
+  /** Le pourcentage de croyance : mesure la restructuration, pas l'émotion. */
+  belief_before_0_100?: number | null
+  belief_after_0_100?: number | null
+  /** Intéroceptif : ressemblance des sensations provoquées à celles des crises. */
+  similarity_0_10?: number | null
   automatic_thought?: string | null
   thinking_trap?: string | null
   evidence_for?: string | null
@@ -121,6 +126,13 @@ export type ReportPayload = {
   cadre: string
   programme: DayState
   signaux: Signal[]
+  /**
+   * L'agrégat du log d'attaque : la preuve rétrospective. « 0 fois sur 14 » s'appuie
+   * sur les réponses de l'utilisateur, jamais sur une lecture de son texte libre —
+   * l'application ne peut pas juger d'une phrase, et prétendre le faire serait
+   * inventer.
+   */
+  episodes: PanicBilan
   quotidien: Record<string, string | number | null>[]
   echelles: { instrument: string; taken_on: string; total: number; severity: string | null }[]
   expositions: {
@@ -472,7 +484,7 @@ export type Activity = {
 /** Un item du parcours du jour, tel que `build_day()` le calcule. */
 export type ProgramDayItem = {
   activity: Activity
-  slot: 'socle' | 'module' | 'adaptatif'
+  slot: 'socle' | 'corps' | 'module' | 'adaptatif'
   /** La justification personnalisée, avec les chiffres de la personne. */
   why_for_you: string
   /** Les observations exactes qui ont déclenché l'item — le panneau « d'où ça sort ». */
@@ -493,6 +505,8 @@ export type ProgramDay = {
   checkin_done: boolean
   adherence_7j: number
   streak: number
+  /** Jours réellement pratiqués, distinct de la semaine calendaire. */
+  jours_pratiques: number
   gad7_due: boolean
   notices: string[]
 }

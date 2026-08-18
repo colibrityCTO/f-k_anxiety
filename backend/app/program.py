@@ -113,7 +113,14 @@ MODULES: list[dict[str, Any]] = [
             "différents, parce que la variabilité contextuelle est l'un des deux leviers dont "
             "l'effet est le mieux démontré."
         ),
-        "activities": ["echelle-exposition", "exposition-in-vivo", "experience-sociale", "exposition-imaginaire"],
+        # `action-engagee` à partir d'ici : le programme 12 semaines place la phase
+        # d'acceptation en semaines 9-10, et c'est exactement la fenêtre de ce module.
+        # Ajoutée à la liste plutôt qu'insérée comme un neuvième module : renuméroter
+        # aurait déplacé la position de tous les comptes existants sans le dire.
+        "activities": [
+            "echelle-exposition", "exposition-in-vivo", "experience-sociale",
+            "exposition-imaginaire", "action-engagee",
+        ],
     },
     {
         "module": 8,
@@ -126,9 +133,38 @@ MODULES: list[dict[str, Any]] = [
             "silencieusement, par petites décisions confortables. Le régime d'entretien conserve "
             "donc une exposition volontaire par semaine, même quand tout va bien."
         ),
-        "activities": ["plan-prevention-rechute", "exposition-in-vivo", "gad7-hebdo"],
+        "activities": [
+            "plan-prevention-rechute", "exposition-in-vivo", "gad7-hebdo",
+            "action-engagee",
+        ],
     },
 ]
+
+
+# La pratique corporelle du soir, qui **progresse** avec les semaines. Le programme
+# 12 semaines en met une chaque soir du début à la fin, et elle change de nature :
+# étirements, puis relaxation musculaire, puis yoga doux, puis yoga nidra.
+#
+# Pilotée par la semaine et non par le module : c'est une progression parallèle, et
+# la faire dépendre de `MODULES` aurait obligé à renuméroter les modules — donc à
+# déplacer la position de tous les comptes existants, silencieusement.
+#
+# Les niveaux de preuve ne sont pas uniformes et l'ordre en tient compte : la
+# relaxation musculaire est en niveau A, le yoga nidra en B, le yoga doux et les
+# étirements en C. Le plus solide n'arrive pas en dernier par hasard.
+BODY_BY_WEEK: list[tuple[int, str]] = [
+    (2, "etirements-soir"),
+    (4, "relaxation-musculaire"),
+    (8, "yoga-doux"),
+    (99, "yoga-nidra"),
+]
+
+
+def body_practice_for(week: int) -> str:
+    for until, slug in BODY_BY_WEEK:
+        if week <= until:
+            return slug
+    return BODY_BY_WEEK[-1][1]
 
 
 # Quel widget ouvre une activité du programme. `None` est un choix, pas un oubli :
@@ -161,6 +197,13 @@ SLUG_WIDGETS: dict[str, str | None] = {
     "experience-sociale": "exposition",
     "exposition-imaginaire": "exposition",
     "gad7-hebdo": "echelles",
+    # Travail corporel et action engagée. Les trois pratiques corporelles passent par le
+    # widget `meditation`, qui porte déjà minuteur et étapes — en écrire un quatrième
+    # pour la même mécanique n'aurait rien ajouté.
+    "etirements-soir": "meditation",
+    "yoga-doux": "meditation",
+    "yoga-nidra": "meditation",
+    "action-engagee": "journal",
     "regularite-sommeil": None,
     "activite-physique": None,
     "reduction-cafeine": None,
@@ -310,7 +353,9 @@ def _obs(signal: dict[str, Any] | None, limit: int = 5) -> list[dict[str, Any]]:
     ]
 
 
-def adaptive_items(sig: dict[str, Any], profile: dict[str, Any]) -> list[dict[str, Any]]:
+def adaptive_items(
+    sig: dict[str, Any], profile: dict[str, Any], week: int | None = None
+) -> list[dict[str, Any]]:
     """Règles adaptatives. Chaque règle retourne slug + justification + preuves.
 
     Les seuils sont explicites et documentés : l'utilisateur doit pouvoir
@@ -426,6 +471,46 @@ def adaptive_items(sig: dict[str, Any], profile: dict[str, Any]) -> list[dict[st
                     "derniers jours par rapport aux 7 précédents. Quand l'inquiétude prend de la "
                     "place, la contenir dans un créneau fixe évite qu'elle colonise la journée. "
                     "Niveau de preuve B : outil d'appoint, à évaluer sur tes propres données."
+                ),
+                "triggered_by": _obs(trend),
+            }
+        )
+
+    # 6 bis. « Un paramètre à la fois » — et « les rechutes sont normales »
+    #
+    # Le programme 12 semaines pose deux principes que le code ne portait pas : si une
+    # semaine d'exposition aggrave nettement, il faut **réduire l'intensité sans
+    # arrêter** ; et une remontée n'est pas un échec, c'est attendu. Sans cette règle,
+    # la règle 6 se contentait de proposer un outil de plus au moment précis où la
+    # personne en supporte le moins.
+    # `week is not None` en premier : la semaine n'est pas toujours connue — l'analyse
+    # rétrospective appelle cette fonction sans elle. Sans ce garde, la condition
+    # plantait au moment précis où elle devait servir.
+    if (
+        week is not None
+        and trend
+        and trend.get("delta") is not None
+        and trend["delta"] >= 1.5
+        and module_for_week(week)["module"] in {6, 7}
+    ):
+        anciennete = (profile.get("onboarding") or {}).get("anciennete")
+        longstanding = anciennete in {"5-15-ans", "plus-15-ans"}
+        out.append(
+            {
+                "slug": "soupir-physiologique",
+                "why": (
+                    f"Ton anxiété moyenne a monté de {trend['delta']} point sur la semaine, "
+                    "et tu es en pleine phase d'exposition. **C'est attendu** : c'est le "
+                    "moment du programme où ça remonte souvent."
+                    + (
+                        " D'autant plus avec une anxiété installée depuis des années — elle "
+                        "ne se réécrit pas linéairement."
+                        if longstanding
+                        else ""
+                    )
+                    + " La règle est de **réduire l'intensité sans arrêter** : un exercice "
+                    "plus court, plus doux, mais pas de pause. Arrêter au moment du pic est "
+                    "précisément ce qui renforce la peur. Trois minutes aujourd'hui suffisent."
                 ),
                 "triggered_by": _obs(trend),
             }
@@ -576,8 +661,12 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
 
     # Socle quotidien : les trois activités faites tous les jours.
     core_slugs = ["checkin-quotidien", "respiration-lente-10", "journal-libre"]
+    # La pratique corporelle du soir : un quatrième créneau, à côté du socle, du module
+    # et de l'adaptatif. Elle n'est ni l'un ni l'autre — elle traverse tout le programme
+    # en changeant de nature, et la mélanger au socle aurait masqué cette progression.
+    body_slug = body_practice_for(week)
     module_slugs = list(module["activities"])
-    adaptive = adaptive_items(sig, profile or {})
+    adaptive = adaptive_items(sig, profile or {}, week)
 
     # Le GAD-7 n'est proposé que s'il est dû (une fois par semaine).
     last_gad = db.query_one(
@@ -592,7 +681,7 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
     if not gad7_due:
         module_slugs = [s for s in module_slugs if s != "gad7-hebdo"]
 
-    all_slugs = core_slugs + module_slugs + [a["slug"] for a in adaptive]
+    all_slugs = core_slugs + [body_slug] + module_slugs + [a["slug"] for a in adaptive]
     catalogue = _activities_by_slug(all_slugs)
 
     logs = {
@@ -650,6 +739,48 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
             [],
         )
 
+    _add(
+        body_slug,
+        "corps",
+        {
+            "etirements-soir": (
+                "Dix minutes avant de dormir, sur la nuque, les épaules et le bas du dos — "
+                "là où la tension anxieuse s'installe. C'est de l'hygiène du soir, pas un "
+                "traitement, et c'est dit : niveau de preuve C."
+            ),
+            "relaxation-musculaire": (
+                "La relaxation musculaire progressive est le seul élément de cette série qui "
+                "soit en niveau A : NICE la recommande à égalité avec la TCC pour l'anxiété "
+                "généralisée. C'est aussi celle qui apprend à repérer la montée de tension "
+                "assez tôt pour intervenir."
+            ),
+            "yoga-doux": (
+                "Quinze minutes centrées sur le souffle. Réserve à connaître : la "
+                "méta-analyse de référence ne retrouve **aucun** effet du yoga chez les "
+                "personnes dont le trouble anxieux est diagnostiqué selon le DSM. À faire si "
+                "ça te fait du bien, pas parce que ça traiterait l'anxiété."
+            ),
+            "yoga-nidra": (
+                "Le mieux soutenu de la série : 73 essais, 5 201 participants, effets "
+                "importants y compris contre des comparateurs actifs. Et c'est celui qui "
+                "entraîne directement ce que la phase d'acceptation demande — rester avec "
+                "une sensation désagréable sans lutter."
+            ),
+        }.get(body_slug, "Pratique corporelle du soir."),
+        [
+            {
+                "signal": "progression_corporelle",
+                "libelle": f"Pratique corporelle de la semaine {week}",
+                "valeur": body_slug,
+                "methode": (
+                    "progression parallèle au programme : étirements, puis relaxation "
+                    "musculaire, puis yoga doux, puis yoga nidra"
+                ),
+                "donnees": [{"semaine": week}],
+            }
+        ],
+    )
+
     for slug in module_slugs:
         _add(
             slug,
@@ -706,6 +837,23 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
 
     checkin_done = bool(streak_rows and streak_rows[0]["entry_date"] == day)
 
+    # Jours réellement pratiqués, distinct de la semaine calendaire.
+    #
+    # La progression est calendaire, et c'est un choix assumé — bloquer sur l'assiduité
+    # transformerait un outil de soin en système de punition. Mais la conséquence est
+    # réelle : après trois semaines d'arrêt, on revient en semaine 6 sans avoir rien
+    # fait, et le programme parle d'exposition situationnelle à quelqu'un qui n'a pas
+    # fait la base. Afficher les deux chiffres est la seule façon honnête de le dire
+    # sans bloquer qui que ce soit.
+    practiced = db.query_one(
+        """
+        SELECT count(DISTINCT entry_date) AS n FROM activity_logs
+        WHERE user_id = %s AND entry_date <= %s AND status IN ('fait', 'partiel')
+        """,
+        (user_id, day),
+    )
+    days_practiced = int(practiced["n"]) if practiced else 0
+
     notices: list[str] = []
     if sig["drapeaux_rouges"]:
         notices.append(
@@ -717,6 +865,15 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
         notices.append(
             "Première semaine : l'objectif est uniquement de mesurer. Ne cherchez pas encore à "
             "changer quoi que ce soit — t'as besoin d'une ligne de base."
+        )
+    expected = max(1, (week - 1) * 7)
+    if week >= 3 and days_practiced < expected * 0.4:
+        notices.append(
+            f"Semaine {week} du calendrier, mais **{days_practiced} jours de pratique** "
+            f"effectifs. Le programme avance au calendrier — c'est fait exprès, bloquer la "
+            "progression sur l'assiduité transformerait ça en punition. Mais si le module "
+            "en cours te paraît hors sujet, c'est probablement pour cette raison : reprends "
+            "le socle avant le reste."
         )
     if adherence_signal and adherence_signal.get("value") is not None and adherence_signal["value"] < 0.4:
         notices.append(
@@ -736,5 +893,6 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
         "adherence_7j": adherence_7j,
         "streak": streak,
         "gad7_due": gad7_due,
+        "jours_pratiques": days_practiced,
         "notices": notices,
     }

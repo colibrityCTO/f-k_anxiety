@@ -48,6 +48,12 @@ export default function Journal({ item, busy, onSubmit, onSkip }: WidgetProps) {
   const [alternative, setAlternative] = useState('')
   const [before, setBefore] = useState(7)
   const [after, setAfter] = useState(5)
+  // Le journal en trois colonnes du programme 12 semaines : pensée → à combien
+  // j'y crois → pensée plus réaliste. Le pourcentage manquait, et c'est lui qui
+  // mesure le mouvement propre de la restructuration : `intensity` mesure
+  // l'émotion, pas l'adhésion à la pensée. Les deux bougent indépendamment.
+  const [beliefBefore, setBeliefBefore] = useState(80)
+  const [beliefAfter, setBeliefAfter] = useState(50)
   const [emotions, setEmotions] = useState<string[]>([])
   const [editing, setEditing] = useState<string | null>(null)
   const [past, setPast] = useState<JournalEntry[] | null>(null)
@@ -67,6 +73,8 @@ export default function Journal({ item, busy, onSubmit, onSkip }: WidgetProps) {
     setAlternative(entry.alternative_thought ?? '')
     setBefore(entry.intensity_before ?? 7)
     setAfter(entry.intensity_after ?? 5)
+    setBeliefBefore(entry.belief_before_0_100 ?? 80)
+    setBeliefAfter(entry.belief_after_0_100 ?? 50)
     setEmotions(entry.emotions ?? [])
     setPast(null)
   }
@@ -168,6 +176,20 @@ export default function Journal({ item, busy, onSubmit, onSkip }: WidgetProps) {
               <input id="situation" value={situation} onChange={(event) => setSituation(event.target.value)} />
             </div>
             <Slider label="Intensité sur le moment" value={before} onChange={setBefore} />
+            {/* La deuxième colonne du journal en trois colonnes : à combien tu crois à
+                cette pensée. Distincte de l'intensité, qui mesure l'émotion — on peut
+                très bien être moins bouleversé tout en y croyant autant, et c'est
+                précisément ce qu'il faut pouvoir voir. Échelle 0-100 et non 0-10 : c'est
+                celle du programme, et un pourcentage se discute mieux qu'une note. */}
+            <Slider
+              label="À combien tu y crois"
+              value={beliefBefore}
+              onChange={setBeliefBefore}
+              max={100}
+              lowLabel="pas du tout"
+              highLabel="certain"
+              suffix=" %"
+            />
             <div className="field">
               <label htmlFor="thought">La pensée automatique — la phrase exacte</label>
               <textarea id="thought" value={thought} onChange={(event) => setThought(event.target.value)} />
@@ -201,6 +223,15 @@ export default function Journal({ item, busy, onSubmit, onSkip }: WidgetProps) {
               <textarea id="alt" value={alternative} onChange={(event) => setAlternative(event.target.value)} />
             </div>
             <Slider label="Intensité maintenant" value={after} onChange={setAfter} />
+            <Slider
+              label="Et maintenant, tu y crois à combien"
+              value={beliefAfter}
+              onChange={setBeliefAfter}
+              max={100}
+              lowLabel="pas du tout"
+              highLabel="certain"
+              suffix=" %"
+            />
           </>
         )}
 
@@ -226,6 +257,8 @@ export default function Journal({ item, busy, onSubmit, onSkip }: WidgetProps) {
                     alternative_thought: alternative,
                     intensity_before: before,
                     intensity_after: after,
+                    belief_before_0_100: beliefBefore,
+                    belief_after_0_100: beliefAfter,
                   },
             )
           }

@@ -14,7 +14,8 @@ router = APIRouter(prefix="/journal", tags=["journal"])
 
 _COLUMNS = """
 id::text, entry_date, kind, situation, emotions, body_sensations,
-intensity_before, intensity_after, automatic_thought, thinking_trap,
+intensity_before, intensity_after, belief_before_0_100, belief_after_0_100,
+similarity_0_10, automatic_thought, thinking_trap,
 evidence_for, evidence_against, coping_plan, alternative_thought,
 prediction, prediction_probability, actual_outcome, learning,
 safety_behaviors_dropped, worry_text, worry_actionable, next_action,
@@ -43,13 +44,15 @@ def create_entry(payload: JournalIn, user: CurrentUser) -> JournalOut:
         f"""
         INSERT INTO journal_entries
             (user_id, entry_date, kind, situation, emotions, body_sensations,
-             intensity_before, intensity_after, automatic_thought, thinking_trap,
+             intensity_before, intensity_after, belief_before_0_100, belief_after_0_100,
+             similarity_0_10, automatic_thought, thinking_trap,
              evidence_for, evidence_against, coping_plan, alternative_thought,
              prediction, prediction_probability, actual_outcome, learning,
              safety_behaviors_dropped, worry_text, worry_actionable, next_action, free_text)
         VALUES
             (%(user_id)s, %(entry_date)s, %(kind)s, %(situation)s, %(emotions)s,
              %(body_sensations)s, %(intensity_before)s, %(intensity_after)s,
+             %(belief_before_0_100)s, %(belief_after_0_100)s, %(similarity_0_10)s,
              %(automatic_thought)s, %(thinking_trap)s, %(evidence_for)s,
              %(evidence_against)s, %(coping_plan)s, %(alternative_thought)s,
              %(prediction)s, %(prediction_probability)s, %(actual_outcome)s, %(learning)s,
@@ -101,6 +104,8 @@ def update_entry(entry_id: str, payload: JournalIn, user: CurrentUser) -> Journa
             entry_date = %(entry_date)s, kind = %(kind)s, situation = %(situation)s,
             emotions = %(emotions)s, body_sensations = %(body_sensations)s,
             intensity_before = %(intensity_before)s, intensity_after = %(intensity_after)s,
+            belief_before_0_100 = %(belief_before_0_100)s,
+            belief_after_0_100 = %(belief_after_0_100)s,
             automatic_thought = %(automatic_thought)s, thinking_trap = %(thinking_trap)s,
             evidence_for = %(evidence_for)s, evidence_against = %(evidence_against)s,
             coping_plan = %(coping_plan)s, alternative_thought = %(alternative_thought)s,

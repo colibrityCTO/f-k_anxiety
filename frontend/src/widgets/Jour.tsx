@@ -26,6 +26,14 @@ const SLOTS: { key: string; title: string; note: string }[] = [
     note: 'Tous les jours. Sans mesure quotidienne, rien du reste n’est interprétable.',
   },
   {
+    key: 'corps',
+    title: 'Le soir, le corps',
+    note:
+      'Une pratique corporelle chaque soir, qui change avec les semaines : étirements, ' +
+      'puis relaxation musculaire, puis yoga doux, puis yoga nidra. Les niveaux de preuve ' +
+      'ne sont pas les mêmes, et chacun le dit.',
+  },
+  {
     key: 'module',
     title: 'Cette semaine',
     note: 'La progression du programme, sur douze semaines.',
@@ -71,6 +79,13 @@ export default function Jour({ busy, onOpen }: WidgetProps) {
         <div>
           <span>Jours d'affilée</span>
           <b>{day.streak}</b>
+        </div>
+        {/* Les deux chiffres côte à côte : la semaine avance au calendrier, la pratique
+            non. L'écart entre les deux explique pourquoi un module peut paraître hors
+            sujet — et le masquer aurait laissé la question sans réponse. */}
+        <div>
+          <span>Jours pratiqués</span>
+          <b>{day.jours_pratiques}</b>
         </div>
         <div>
           <span>Assiduité 7 j</span>

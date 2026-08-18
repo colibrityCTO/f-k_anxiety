@@ -1230,6 +1230,11 @@ async def _submit_journal(
         "body_sensations": values.get("body_sensations") or [],
         "intensity_before": values.get("intensity_before"),
         "intensity_after": values.get("intensity_after"),
+        # Le journal en trois colonnes : à combien la pensée est crue, avant et après.
+        # Distinct de l'intensité, qui mesure l'émotion — les deux bougent
+        # indépendamment, et c'est précisément ce qu'il faut pouvoir observer.
+        "belief_before_0_100": values.get("belief_before_0_100"),
+        "belief_after_0_100": values.get("belief_after_0_100"),
         "automatic_thought": values.get("automatic_thought"),
         "thinking_trap": values.get("thinking_trap"),
         "evidence_for": values.get("evidence_for"),
@@ -1266,7 +1271,10 @@ async def _submit_journal(
             UPDATE journal_entries SET
                 kind = %(kind)s, situation = %(situation)s, emotions = %(emotions)s,
                 body_sensations = %(body_sensations)s, intensity_before = %(intensity_before)s,
-                intensity_after = %(intensity_after)s, automatic_thought = %(automatic_thought)s,
+                intensity_after = %(intensity_after)s,
+                belief_before_0_100 = %(belief_before_0_100)s,
+                belief_after_0_100 = %(belief_after_0_100)s,
+                automatic_thought = %(automatic_thought)s,
                 thinking_trap = %(thinking_trap)s, evidence_for = %(evidence_for)s,
                 evidence_against = %(evidence_against)s, coping_plan = %(coping_plan)s,
                 alternative_thought = %(alternative_thought)s, free_text = %(free_text)s,
@@ -1282,12 +1290,14 @@ async def _submit_journal(
             """
             INSERT INTO journal_entries
                 (user_id, entry_date, kind, situation, emotions, body_sensations,
-                 intensity_before, intensity_after, automatic_thought, thinking_trap,
+                 intensity_before, intensity_after, belief_before_0_100, belief_after_0_100,
+                 automatic_thought, thinking_trap,
                  evidence_for, evidence_against, coping_plan, alternative_thought,
                  prediction, prediction_probability, actual_outcome, learning,
                  safety_behaviors_dropped, worry_text, worry_actionable, next_action, free_text)
             VALUES (%(user_id)s, %(entry_date)s, %(kind)s, %(situation)s, %(emotions)s,
                     %(body_sensations)s, %(intensity_before)s, %(intensity_after)s,
+                    %(belief_before_0_100)s, %(belief_after_0_100)s,
                     %(automatic_thought)s, %(thinking_trap)s, %(evidence_for)s, %(evidence_against)s,
                     %(coping_plan)s, %(alternative_thought)s, %(prediction)s,
                     %(prediction_probability)s, %(actual_outcome)s, %(learning)s,
@@ -1773,15 +1783,20 @@ async def _submit_interoceptif(
         """
         INSERT INTO journal_entries
             (user_id, entry_date, kind, situation, prediction, prediction_probability,
-             actual_outcome, learning, intensity_before, intensity_after, body_sensations,
-             emotions, safety_behaviors_dropped)
-        VALUES (%s, %s, 'exposition', %s, %s, %s, %s, %s, %s, %s, %s, '{}', '{}')
+             actual_outcome, learning, intensity_before, intensity_after, similarity_0_10,
+             body_sensations, emotions, safety_behaviors_dropped)
+        VALUES (%s, %s, 'exposition', %s, %s, %s, %s, %s, %s, %s, %s, %s, '{}', '{}')
         RETURNING id::text
         """,
         (
             user_id, today, f"Exposition intéroceptive — {exercise['name']}",
             prediction or None, values.get("prediction_probability"), outcome or None,
             values.get("learning") or None, values.get("anxiety_max"), values.get("anxiety_after"),
+            # La ressemblance aux crises réelles : c'est elle qui décide quel exercice
+            # compte pour cette personne. Provoquer un vertige n'apprend rien à quelqu'un
+            # dont les crises sont digestives. La colonne existait et personne ne
+            # l'écrivait.
+            values.get("similarity_0_10"),
             exercise["sensations"],
         ),
     )
@@ -1833,6 +1848,22 @@ async def _submit_interoceptif(
     repetitions = int(done["n"]) if done else 1
 
     bits = [f"{exercise['name']} — répétition **{repetitions}**, enregistrée."]
+    # La similarité est l'information la plus actionnable de tout l'exercice : elle dit
+    # s'il faut le répéter ou en changer. La commenter est plus utile que de la stocker.
+    similarity = values.get("similarity_0_10")
+    if isinstance(similarity, int):
+        if similarity >= 7:
+            bits.append(
+                f"Ressemblance à tes crises réelles : **{similarity}/10**. C'est élevé, "
+                "donc c'est celui-là qu'il faut répéter — l'apprentissage porte sur les "
+                "sensations que tu redoutes vraiment, pas sur des sensations voisines."
+            )
+        elif similarity <= 3:
+            bits.append(
+                f"Ressemblance à tes crises réelles : **{similarity}/10**. C'est bas : cet "
+                "exercice provoque autre chose que ce que tu redoutes. Mieux vaut en "
+                "essayer un autre que de le répéter."
+            )
     probability = values.get("prediction_probability")
     if probability is not None and outcome:
         bits.append(f"Tu donnais **{probability} %** au scénario redouté. Ce qui est arrivé : {outcome}")
@@ -1985,6 +2016,50 @@ async def _submit_soir(
         memory.remember, user_id, "checkin", row["id"],
         memory.render_checkin({**row, "entry_date": day}), day, {"moment": "soir"},
     )
+
+    # La ligne de soutien du soir. Écrite en journal et non dans le check-in : c'est du
+    # texte, sa valeur est d'être relu des mois plus tard, et `daily_checkins` n'est pas
+    # vectorisé. `action-engagee` est marquée faite au passage — c'est exactement
+    # l'activité que cette ligne réalise.
+    held = str(values.get("tenu") or "").strip()
+    if held:
+        entry = await asyncio.to_thread(
+            db.execute_returning,
+            """
+            INSERT INTO journal_entries (user_id, entry_date, kind, free_text)
+            VALUES (%s, %s, 'libre', %s) RETURNING id::text
+            """,
+            (user_id, day, f"Ce que j'ai tenu aujourd'hui : {held}"),
+        )
+        await asyncio.to_thread(_log_activity, user_id, "action-engagee", day)
+        if entry:
+            background.add_task(
+                memory.remember, user_id, "journal", entry["id"],
+                f"Tenu le {day} — {held}", day, {"kind": "soutien"},
+            )
+
+    # Contribution aux statistiques collectives, **seulement** si consentie. Rien n'est
+    # affiché à partir de cette table aujourd'hui : ce qui bloque est l'effectif, pas le
+    # code, et la construire maintenant évite de repartir de zéro le jour où il y aura
+    # du monde.
+    from .. import cohort as cohort_mod
+
+    await asyncio.to_thread(
+        cohort_mod.contribute,
+        user_id,
+        user.get("profile") or {},
+        day,
+        {
+            "anxiete": values.get("anxiety_0_10"),
+            "pic": values.get("anxiety_peak_0_10"),
+            "cafeine": values.get("caffeine_units"),
+            "alcool": values.get("alcohol_units"),
+            "sport": values.get("exercise_min"),
+            "evitement": values.get("avoidance_0_10"),
+            "paniques": panic,
+        },
+    )
+
     follow_up = await _comment_on_checkin(user, row)
 
     # La prévision du lendemain est posée maintenant : la journée est renseignée, donc
@@ -2309,6 +2384,12 @@ def report(user: CurrentUser, days: int = 90) -> dict[str, Any]:
             "serveur sur l'historique complet, pas produits par un modèle de langage."
         ),
         "signaux": sig["signaux"],
+        # L'agrégat du log d'attaque. Sa place est ici : c'est la preuve rétrospective
+        # que le programme 12 semaines lui assigne — « l'anxiété passe toujours, la
+        # catastrophe n'a pas eu lieu » — et un professionnel qui lit ce document a
+        # besoin du compte, de la durée médiane, et du nombre de fois où ce qui était
+        # redouté est réellement arrivé. Il était calculé et affiché nulle part.
+        "episodes": _panic_bilan(user_id),
         "quotidien": db.query_all(
             """
             SELECT entry_date,

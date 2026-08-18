@@ -222,6 +222,61 @@ CREATE INDEX IF NOT EXISTS daily_forecasts_user_idx
     ON daily_forecasts (user_id, target_date DESC);
 
 -- ---------------------------------------------------------------------------
+--  Table de faits pour les statistiques collectives
+--
+--  **Rien n'est affiché à partir de cette table aujourd'hui**, et c'est délibéré.
+--  L'exemple qui motivait la demande — « les personnes de 28 ans en Europe avec ce
+--  niveau d'anxiété qui font une activité intense ont plus souvent une crise le
+--  lendemain » — est une analyse de sous-groupe sur données de santé. Elle demande
+--  des effectifs, pas du code.
+--
+--  Trois contraintes tenues par la structure elle-même :
+--
+--  1. **Consentement séparé.** Une ligne n'est écrite que si
+--     `profile.consentements.cohorte` vaut `true`. Le refuser ne retire aucune
+--     fonction — c'est une exigence de l'article 9 du RGPD, pas une politesse.
+--  2. **Pseudonyme, et dit comme tel.** `user_key` est un HMAC du compte avec un sel
+--     serveur. Ça n'est **pas** de l'anonymat : une donnée pseudonymisée reste une
+--     donnée personnelle au sens de l'article 4(5), et le prétendre serait faux.
+--  3. **Granularité volontairement grossière.** Tranches d'âge de dix ans, pays ou
+--     continent, jamais de ville. Un tuple « 28 ans + ville + niveau d'anxiété » est
+--     ré-identifiant à lui seul.
+--
+--  Le garde-fou des onze personnes par cellule vit dans le code (`cohort.py`), pas
+--  ici : une contrainte SQL ne peut pas compter des personnes distinctes au moment
+--  d'un SELECT d'agrégation.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cohort_facts (
+    id             bigserial PRIMARY KEY,
+    -- HMAC du compte. Volontairement pas de clé étrangère vers `users` : la table doit
+    -- pouvoir survivre à la suppression d'un compte sans le trahir, et une contrainte
+    -- référentielle rétablirait le lien qu'on cherche à couper.
+    user_key       text NOT NULL,
+    entry_date     date NOT NULL,
+    -- Attributs de strate, grossiers par construction.
+    age_band       text,           -- '20-29', '30-39'…
+    region         text,           -- pays ou continent, jamais plus fin
+    difficulties   text[] NOT NULL DEFAULT '{}',
+    -- Mesures du jour, telles que les signaux les voient.
+    anxiety_0_10       numeric(4,2),
+    anxiety_peak_0_10  integer,
+    sleep_hours        numeric(4,2),
+    caffeine_units     integer,
+    alcohol_units      integer,
+    exercise_min       integer,
+    avoidance_0_10     integer,
+    panic_attacks      integer,
+    -- Bracelet, quand il y en a un.
+    hrv_rmssd_milli    numeric(6,2),
+    resting_heart_rate integer,
+    session_max_hr     integer,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_key, entry_date)
+);
+CREATE INDEX IF NOT EXISTS cohort_facts_strata_idx
+    ON cohort_facts (age_band, region, entry_date DESC);
+
+-- ---------------------------------------------------------------------------
 --  Intégrations : jetons OAuth, chiffrés au repos
 --
 --  Un jeton d'accès Whoop donne accès à des mois de données physiologiques

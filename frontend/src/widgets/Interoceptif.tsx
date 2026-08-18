@@ -23,6 +23,10 @@ export default function Interoceptif({ busy, onSubmit, onSkip }: WidgetProps) {
   const [learning, setLearning] = useState('')
   const [anxietyMax, setAnxietyMax] = useState(6)
   const [anxietyAfter, setAnxietyAfter] = useState(3)
+  // La ressemblance aux crises réelles. Défaut à 5 et non 0 : un défaut à zéro
+  // serait validé tel quel par quelqu'un qui passe vite, et un zéro faux ferait
+  // écarter un exercice utile.
+  const [similarity, setSimilarity] = useState(5)
   const [remaining, setRemaining] = useState(0)
   const [running, setRunning] = useState(false)
   const [finished, setFinished] = useState(false)
@@ -215,6 +219,16 @@ export default function Interoceptif({ busy, onSubmit, onSkip }: WidgetProps) {
                   />
                 </div>
                 <Slider label="Anxiété maintenant" value={anxietyAfter} onChange={setAnxietyAfter} />
+                {/* La question qui décide quel exercice compte pour cette personne.
+                    Elle vient de l'évaluation intéroceptive de Schmidt & Trakowski,
+                    déjà citée dans le catalogue — et elle manquait. */}
+                <Slider
+                  label="Ressemblance à tes crises réelles"
+                  value={similarity}
+                  onChange={setSimilarity}
+                  lowLabel="rien à voir"
+                  highLabel="exactement ça"
+                />
               </>
             )}
           </>
@@ -251,6 +265,7 @@ export default function Interoceptif({ busy, onSubmit, onSkip }: WidgetProps) {
               learning,
               anxiety_max: anxietyMax,
               anxiety_after: anxietyAfter,
+              similarity_0_10: similarity,
               repetition: repetitions + 1,
             })
           }

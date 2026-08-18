@@ -87,19 +87,25 @@ portée. À la place, une question le lendemain d'une séance intense.
 programme — il répare une règle adaptative morte depuis le début, qui lisait une clé de
 profil que personne n'écrivait.
 
-### Ce qui reste de la V5
+**Le parcours du jour**, les **trois créneaux** d'ouverture (matin, midi, soir) et la
+**question du jour** déterministe. Le contenu venu du programme 12 semaines : phase
+d'acceptation, pratique corporelle du soir qui progresse avec les semaines, variantes
+respiratoires nommées. Trente-et-une fiches de preuve, dont dix écrites pour la V5 —
+sans elles, l'application affirmait des choses dont les sources n'étaient pas dans son
+propre corpus.
 
-- **Le parcours du jour** comme widget : `build_day()` produit cinq à huit items, et
-  l'ouverture n'en propose qu'un.
-- **Trois créneaux d'ouverture** (matin, milieu de journée, soir) plutôt qu'un seul.
-- **Question du jour** déterministe, sur le gabarit « j'ai peur de ___, je vais faire
-  ___ malgré ça ».
-- **Contenu du programme** : phase d'acceptation (niveau B, comparable à la TCC et non
-  supérieure), travail corporel du soir (yoga nidra niveau B, yoga niveau C — aucun
-  effet retrouvé chez les patients diagnostiqués selon le DSM).
-- **Analyses de cohorte** : la table de faits et le consentement séparé existent, rien
-  n'est affiché. Le seuil est de onze personnes par comparaison — en dessous, un chiffre
-  collectif est à la fois faux et ré-identifiant. Ça dépend des effectifs, pas du code.
+### Ce qui reste
+
+- **Whoop** : le code est écrit et testé, il attend des identifiants
+  `developer.whoop.com`. Rien à coder.
+- **Analyses de cohorte** : la table de faits, le consentement séparé et le garde-fou
+  des onze personnes existent. **Rien n'est affiché**, et ce n'est pas un manque de
+  code : sous onze personnes distinctes par comparaison, un chiffre collectif est à la
+  fois faux et ré-identifiant. Ça dépend des effectifs.
+- **Vectorisation du corpus** : sans `OPENAI_API_KEY`, la recherche fonctionne en plein
+  texte seul. Les trente-et-une fiches sont ingérées, pas embeddées.
+- **Notification push serveur** (V4), **édition d'une entrée de journal passée**,
+  **chiffrement au repos du journal** — inchangés depuis la V4.
 
 ## V4 — ce qui reste
 

@@ -230,7 +230,7 @@ class ExposureItemOut(ExposureItemIn):
 
 class ProgramItem(BaseModel):
     activity: ActivityOut
-    slot: Literal["socle", "module", "adaptatif"]
+    slot: Literal["socle", "corps", "module", "adaptatif"]
     # Le widget que cet item ouvre, ou `null` s'il n'y a rien à ouvrir (conseil
     # d'hygiène). Sans ce champ, le parcours du jour serait une liste à lire.
     widget: str | None = None
@@ -253,6 +253,9 @@ class ProgramDayOut(BaseModel):
     adherence_7j: float
     streak: int
     gad7_due: bool
+    # Jours réellement pratiqués, à côté de la semaine calendaire : la progression
+    # est calendaire, et l'écart entre les deux est une information, pas un défaut.
+    jours_pratiques: int = 0
     notices: list[str] = Field(default_factory=list)
 
 

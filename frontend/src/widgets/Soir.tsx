@@ -36,6 +36,7 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
   const [exercise, setExercise] = useState(numberOf('exercise_min', 0))
   const [panic, setPanic] = useState(numberOf('panic_attacks', 0))
   const [trigger, setTrigger] = useState(String(prefill.main_trigger ?? ''))
+  const [held, setHeld] = useState('')
 
   // Paniques déclarées au moment de la crise : on affiche, on ne redemande pas.
   const panicDerived = derived.has('panic_attacks')
@@ -144,6 +145,26 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
           />
         </div>
 
+        {/* La ligne de soutien du programme 12 semaines. La précision entre
+            parenthèses est ce qui la distingue d'une gamification : « pas sur les
+            accomplissements, mais sur le j'ai tenu ça ». Ce n'est ni un badge ni une
+            félicitation pour une variation sous le seuil clinique — c'est de
+            l'auto-compassion sur l'endurance, et ça n'a rien à voir. */}
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="soir-tenu">
+            Une chose que t'as tenue aujourd'hui
+            <span className="hint">
+              Pas un accomplissement — quelque chose que t'as enduré. Facultatif.
+            </span>
+          </label>
+          <input
+            id="soir-tenu"
+            value={held}
+            placeholder="j'ai fait la réunion en entier, je suis resté dans le métro…"
+            onChange={(event) => setHeld(event.target.value)}
+          />
+        </div>
+
         <WhyBox
           mechanism="Deux chiffres et non un seul : sous anxiété, la mémoire retient les pires moments, donc une « moyenne » demandée de tête est en réalité un pic. Les séparer permet de savoir lequel bouge — un pic qui baisse et une moyenne stable ne veulent pas dire la même chose. Les régularités personnelles (sommeil → anxiété du lendemain, caféine → pics) ne sont visibles que sur ta propre série : aucune moyenne de population ne peut te les dire."
           evidenceLevel="A"
@@ -186,6 +207,7 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
               // compte réel qui gagne, pas ce qu'on se rappelle le soir.
               panic_attacks: panic,
               main_trigger: trigger || null,
+              tenu: held || null,
             })
           }
         >
