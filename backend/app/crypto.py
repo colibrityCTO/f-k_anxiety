@@ -26,13 +26,27 @@ from __future__ import annotations
 import base64
 import logging
 
-from cryptography.fernet import Fernet, InvalidToken
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class Unavailable(RuntimeError):
+    """`cryptography` n'est pas installée : l'intégration est indisponible."""
+
+
+def available() -> bool:
+    """La bibliothèque est-elle là ?
+
+    Sert à décider si une intégration se propose ou non, plutôt qu'à la laisser
+    échouer au premier clic.
+    """
+    try:
+        import cryptography.fernet  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
 
 # Sel de contexte : il sépare cette dérivation de toute autre qui partirait du même
 # secret. Fixe et public — c'est son rôle, un sel HKDF n'a pas à être secret.
@@ -40,6 +54,23 @@ _INFO = b"fuck-anxiety/oauth-tokens/v1"
 
 
 def _key() -> bytes:
+    """Import **dans la fonction**, et c'est la leçon de l'incident.
+
+    Ce module importait `cryptography` au niveau du module. Comme
+    `integrations/whoop.py` importe `crypto`, que `routers/integrations.py` importe
+    `whoop`, et que `main.py` importe le routeur, une dépendance absente faisait
+    échouer l'import de l'application entière : uvicorn ne démarrait pas, et le
+    healthcheck échouait sans autre explication.
+
+    Le reste du projet avait déjà la bonne convention — `push.py` importe
+    `pywebpush` dans un `try/except ImportError` et désactive les notifications,
+    `vapid.py` importe `cryptography` dans sa fonction. La convention est reprise
+    ici. Une intégration de bracelet ne doit pas pouvoir empêcher quelqu'un
+    d'enregistrer son check-in.
+    """
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
     derived = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
@@ -51,6 +82,13 @@ def _key() -> bytes:
 
 def seal(plaintext: str) -> str:
     """Chiffre une valeur. Le résultat est du texte, stockable dans une colonne `text`."""
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError as exc:  # pragma: no cover - dépendance absente
+        raise Unavailable(
+            "La bibliothèque de chiffrement n'est pas installée sur ce serveur : "
+            "impossible de stocker un jeton d'intégration en sécurité."
+        ) from exc
     return Fernet(_key()).encrypt(plaintext.encode("utf-8")).decode("ascii")
 
 
@@ -61,6 +99,11 @@ def unseal(ciphertext: str) -> str | None:
     « reconnecte l'intégration », pas à une erreur 500 sur une route de lecture qui
     n'a rien à voir.
     """
+    try:
+        from cryptography.fernet import Fernet, InvalidToken
+    except ImportError:  # pragma: no cover - dépendance absente
+        logger.error("Bibliothèque de chiffrement absente : intégrations désactivées")
+        return None
     try:
         return Fernet(_key()).decrypt(ciphertext.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError, TypeError):

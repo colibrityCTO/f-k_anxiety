@@ -287,6 +287,21 @@ with TestClient(app) as client:
             """,
             (user_id, day, 6 + (offset % 3), 5.0 + (offset % 4) * 0.5),
         )
+    # Les **deux** moments du jour sont renseignés, et c'est nécessaire depuis que
+    # l'ouverture dépend du créneau horaire : sans la ligne du matin, une exécution
+    # avant 17 h proposerait le check-in du matin au lieu du programme, et le test
+    # passait ou échouait selon l'heure à laquelle on le lançait.
+    for moment in ("matin", "soir"):
+        db.execute(
+            """
+            INSERT INTO daily_checkins (user_id, entry_date, moment, anxiety_0_10,
+                                        avoidance_0_10, sleep_hours, caffeine_units)
+            VALUES (%s, %s, %s, 6, 8, 5.5, 3)
+            ON CONFLICT (user_id, entry_date, moment) DO UPDATE SET anxiety_0_10 = 6
+            """,
+            (user_id, today, moment),
+        )
+
     _reset_opening(user_id, today)
     reopened = thread(client, h)
     # L'ouverture n'est pas forcément le dernier message : la proposition de bilan

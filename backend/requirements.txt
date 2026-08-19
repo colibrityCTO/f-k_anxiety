@@ -25,5 +25,19 @@ langchain-openai>=0.2,<1.0
 anthropic>=0.40,<1.0
 openai>=1.55,<3.0
 
+# Chiffrement au repos des jetons d'intégration (app/crypto.py).
+#
+# À déclarer explicitement, et ne pas s'en remettre au transitif : `cryptography`
+# n'arrivait ici que parce que `pywebpush` était installé à la main en
+# développement. Une installation propre depuis ce fichier ne l'avait pas — et
+# `app/crypto.py` l'importait au niveau du module, donc l'application entière ne
+# démarrait plus en production. Le healthcheck échouait sans rien dire de plus.
+cryptography>=42,<52
+
+# Client HTTP de l'intégration Whoop. Présent transitivement via langchain-core,
+# mais s'appuyer sur la dépendance d'une dépendance pour un appel réseau direct,
+# c'est accepter qu'un `pip install` la fasse disparaître un jour.
+httpx>=0.27,<1.0
+
 python-dotenv>=1.0,<2.0
 PyYAML>=6.0,<7.0

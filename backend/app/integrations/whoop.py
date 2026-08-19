@@ -46,8 +46,6 @@ import logging
 import secrets
 from typing import Any
 
-import httpx
-
 from .. import crypto, db
 from ..config import settings
 
@@ -93,6 +91,11 @@ def authorize_url(state: str) -> str:
     """URL d'autorisation. `state` protège du CSRF et doit être vérifié au retour."""
     if not settings.has_whoop:
         raise WhoopError("L'intégration Whoop n'est pas configurée sur ce serveur.")
+    # `urlencode` de la bibliothèque standard plutôt que `httpx.QueryParams` : une
+    # URL à construire n'a pas besoin d'un client HTTP, et c'est une dépendance de
+    # moins sur le chemin qui mène au démarrage de l'application.
+    from urllib.parse import urlencode
+
     params = {
         "response_type": "code",
         "client_id": settings.whoop_client_id or "",
@@ -100,7 +103,7 @@ def authorize_url(state: str) -> str:
         "scope": " ".join(SCOPES),
         "state": state,
     }
-    return AUTHORIZE_URL + "?" + httpx.QueryParams(params).__str__()
+    return AUTHORIZE_URL + "?" + urlencode(params)
 
 
 def new_state() -> str:
@@ -108,6 +111,8 @@ def new_state() -> str:
 
 
 def _token_request(payload: dict[str, str]) -> dict[str, Any]:
+    import httpx
+
     with httpx.Client(timeout=20.0) as client:
         response = client.post(TOKEN_URL, data=payload)
     if response.status_code >= 400:
@@ -255,6 +260,8 @@ def _access_token(user_id: str) -> str:
 
 
 def _get(user_id: str, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    import httpx
+
     token = _access_token(user_id)
     with httpx.Client(timeout=30.0) as client:
         response = client.get(

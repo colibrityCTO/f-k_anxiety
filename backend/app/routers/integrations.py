@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from .. import db
+from .. import crypto, db
 from ..config import settings
 from ..deps import CurrentUser
 from ..integrations import whoop
@@ -51,7 +51,10 @@ def list_integrations(user: CurrentUser) -> dict[str, Any]:
 
     return {
         "whoop": {
-            "configure": settings.has_whoop,
+            # Deux conditions, pas une : les identifiants **et** la bibliothèque de
+            # chiffrement. Sans elle, on ne peut pas stocker un jeton en sécurité, donc
+            # on ne propose pas la connexion — plutôt que d'échouer au premier clic.
+            "configure": settings.has_whoop and crypto.available(),
             **summary,
             # Dit une fois, à l'endroit où la question se pose : ce que cette source
             # peut et ne peut pas faire. Sans ça, l'attente est « l'app détectera mes
@@ -72,6 +75,15 @@ def start_authorization(user: CurrentUser) -> dict[str, str]:
     """Renvoie l'URL d'autorisation, et retient `state` pour le vérifier au retour."""
     if not settings.has_whoop:
         raise HTTPException(status_code=503, detail="Intégration Whoop non configurée sur ce serveur.")
+    if not crypto.available():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "La bibliothèque de chiffrement n'est pas installée sur ce serveur : un "
+                "jeton d'accès à des données physiologiques ne serait pas stocké en "
+                "sécurité, donc la connexion est refusée."
+            ),
+        )
     state = whoop.new_state()
     # `state` vit dans le profil : il est à usage unique, vérifié puis effacé au retour.
     # Sans cette vérification, n'importe qui pourrait faire aboutir un code d'autorisation
