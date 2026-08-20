@@ -24,26 +24,31 @@ import re
 from typing import Any
 
 from . import capture as capture_mod
-from . import db, llm_client, memory, program, search, signals as signals_mod
+from . import db, llm_client, memory, next_step, program, search, signals as signals_mod
 from .config import settings
 
 logger = logging.getLogger(__name__)
 
+# Ce que le modèle a le droit d'ouvrir. Volontairement plus court que
+# `WidgetType` côté front : ce dernier doit encore savoir **rendre** `checkin`,
+# `account` et `logout`, parce que des items de ces types dorment dans les fils
+# existants et que le passé ne se réécrit pas. Mais plus rien ne doit en **créer**
+# — le compte a sa page en haut à droite, et le check-in unique est découpé en
+# trois depuis la V5. Une consigne en langue naturelle dans le prompt ne suffisait
+# pas : c'est une liste blanche, vérifiée par `_sanitise`.
 WIDGET_TYPES = {
-    "checkin", "breath", "journal", "gad7", "stats", "analysis", "sources", "account", "logout",
+    "breath", "journal", "gad7", "stats", "analysis", "sources",
     "exposition", "meditation", "memoire", "echelles",
     "interoceptif", "rapport",
-    # V5 — le check-in unique est découpé en trois. `checkin` est conservé : les
-    # items déjà dans le fil gardent leur type, et le passé ne se réécrit pas.
     "matin", "soir", "maintenant",
-    # Récapitulatif d'un épisode, déposé après la crise. Le modèle ne l'ouvre
-    # jamais lui-même : il n'y a rien à saisir, l'épisode est déjà enregistré.
-    "panique",
     # Charge du jour et prévision : une consultation, elle n'écrit rien.
     "prevision",
-    # Questionnaire initial. Le modèle ne l'ouvre jamais : il est déposé une fois,
-    # à la première ouverture du fil, et il n'y a pas de raison d'y revenir.
-    "onboarding",
+    # `panique` et `onboarding` ne sont **pas** dans cette liste, et c'est le point :
+    # elle ne sert qu'à filtrer la sortie du modèle. Le récapitulatif d'épisode est
+    # déposé par QUICK CHILL une fois la crise passée, le questionnaire initial une
+    # seule fois à la première ouverture — les deux par des chemins déterministes qui
+    # ne passent pas par `_sanitise`. Les laisser ici n'aurait servi qu'à autoriser
+    # le modèle à rouvrir un questionnaire de trois minutes au milieu d'une phrase.
     # Le parcours du jour. Le modèle peut l'ouvrir : « qu'est-ce que je dois faire
     # aujourd'hui » est une demande légitime.
     "jour",
@@ -81,7 +86,6 @@ WIDGETS QUE TU PEUX OUVRIR
 - matin       : la nuit et l'instant (sommeil, comment il se sent là, ce qu'il redoute aujourd'hui)
 - soir        : la journée écoulée (pic et moyenne d'anxiété, évitement, cafés, alcool, sport)
 - maintenant  : une mesure instantanée, un seul curseur — quand il dit comment il va *là*
-- checkin     : l'ancien formulaire unique. Ne l'ouvre plus : préfère matin, soir ou maintenant
 - breath      : respiration lente guidée, 5 min à ~6 cycles/min
 - journal     : écrire une entrée (libre ou journal de pensées)
 - echelles    : GAD-7 (hebdomadaire), PHQ-2 (mensuel), évitement (hebdomadaire)
@@ -95,8 +99,6 @@ WIDGETS QUE TU PEUX OUVRIR
 - analysis    : analyse de la période avec ses sources
 - memoire     : recherche dans son propre historique
 - sources     : les fiches du corpus
-- account     : compte et consentement
-- logout      : se déconnecter
 
 FORMAT DE SORTIE — deux parties, dans cet ordre, rien d'autre :
 
@@ -180,6 +182,39 @@ def day_state(user_id: str, today: dt.date | None = None) -> dict[str, Any]:
         (user_id, today),
     )
 
+    # Nombre de jours réellement notés. Sert de garde à tout ce qui n'a de sens
+    # qu'avec de l'historique : proposer « mes chiffres » au deuxième jour affiche
+    # une courbe de deux points, ce qui n'est pas une courbe.
+    logged = db.query_one(
+        "SELECT count(DISTINCT entry_date) AS n FROM daily_checkins WHERE user_id = %s",
+        (user_id,),
+    )
+
+    # --- Le socle du jour, et lui seul -------------------------------------
+    #
+    # Ce qui est *attendu* aujourd'hui, par opposition à ce qui est *proposé*. La
+    # distinction porte toute la barre de progression : « Mon parcours » affichait
+    # `fait / total` sur les cinq à huit items du programme tout en écrivant, deux
+    # écrans plus bas, qu'un seul était attendu. Quelqu'un qui avait fait exactement
+    # ce qu'on lui demandait lisait donc « 1/7 » — la barre annonçait un échec
+    # pendant que le contrat annonçait une réussite.
+    #
+    # Le socle est le contrat : la saisie du jour, la respiration, le journal. Le
+    # reste est proposé, montré dans le parcours, et ne pèse pas.
+    socle = _socle_progress(user_id, today, moments)
+
+    # Le check-in a-t-il été explicitement refusé aujourd'hui ? Lu dans
+    # `activity_logs` et non dans le fil : c'est la table que `_log_skip` alimente, et
+    # celle sur laquelle tous les signaux se calculent.
+    refus = db.query_one(
+        """
+        SELECT 1 FROM activity_logs
+        WHERE user_id = %s AND entry_date = %s
+          AND activity_slug = 'checkin-quotidien' AND status = 'reporte'
+        """,
+        (user_id, today),
+    )
+
     return {
         "date": str(today),
         # Vrai dès qu'un des deux moments est renseigné : le socle est tenu.
@@ -204,6 +239,65 @@ def day_state(user_id: str, today: dt.date | None = None) -> dict[str, Any]:
         "critere": state.get("critere") or {},
         "exposition_due": maintenance and (days_since_exposure is None or days_since_exposure >= 7),
         "jours_depuis_exposition": days_since_exposure,
+        "jours_notes": int(logged["n"]) if logged else 0,
+        "socle": socle,
+        "saisie_reportee": refus is not None,
+    }
+
+
+# Le socle quotidien, en un seul endroit. `program.build_day` compose sa liste à
+# partir des mêmes slugs ; les faire diverger produirait une barre qui ne compte pas
+# ce que le parcours affiche.
+SOCLE_SLUGS: tuple[str, ...] = ("checkin-quotidien", "respiration-lente-10", "journal-libre")
+
+SOCLE_LABELS: dict[str, str] = {
+    "checkin-quotidien": "Noter",
+    "respiration-lente-10": "Respirer",
+    "journal-libre": "Écrire",
+}
+
+
+def _socle_progress(
+    user_id: str, today: dt.date, moments: dict[str, Any], now: dt.datetime | None = None
+) -> dict[str, Any]:
+    """Où en est le contrat du jour : trois lignes, faites ou pas.
+
+    Le check-in ne se lit pas dans `activity_logs` mais dans `daily_checkins` : c'est
+    la table qui porte la donnée, et le journal d'activités n'en est qu'un reflet
+    écrit par le gestionnaire. Se fier au reflet, c'était afficher « pas fait » si
+    l'écriture secondaire échouait.
+
+    Et la ligne « Noter » suit le **créneau en cours**, pas la journée entière. Le
+    faire autrement produisait une contradiction visible : à vingt heures, quelqu'un
+    qui avait noté sa nuit le matin lisait « fait » dans la barre pendant que le fil,
+    juste en dessous, lui réclamait sa journée. `checkin_done` reste vrai dans les
+    deux cas — c'est la bonne sémantique pour les signaux, qui ont besoin d'une ligne
+    par jour, pas d'une ligne par moment.
+    """
+    hour = (now or dt.datetime.now()).hour
+    saisie_due = "soir" if hour >= EVENING_FROM else "matin"
+    rows = {
+        row["activity_slug"]: row["status"]
+        for row in db.query_all(
+            """
+            SELECT activity_slug, status FROM activity_logs
+            WHERE user_id = %s AND entry_date = %s AND activity_slug = ANY(%s)
+            """,
+            (user_id, today, list(SOCLE_SLUGS)),
+        )
+    }
+    items = []
+    for slug in SOCLE_SLUGS:
+        done = (
+            saisie_due in moments
+            if slug == "checkin-quotidien"
+            else rows.get(slug) in {"fait", "partiel"}
+        )
+        items.append({"slug": slug, "label": SOCLE_LABELS[slug], "fait": done})
+    return {
+        "items": items,
+        "fait": sum(1 for item in items if item["fait"]),
+        "total": len(items),
     }
 
 
@@ -407,7 +501,7 @@ def _deterministic(
                 "j'enregistre rien avant."
             ),
             "widget": {"type": target, "prefill": cap.values, "a_verifier": cap.approximate},
-            "suggestions": ["Mes chiffres", "Respirer 5 min"],
+            "suggestions": [],
         }
 
     if "breath" in intents:
@@ -512,6 +606,23 @@ def _deterministic(
     }
 
 
+def _fill_suggestions(decision: dict[str, Any], state: dict[str, Any]) -> None:
+    """Complète les propositions jusqu'à trois, sur l'état réel du jour.
+
+    Vaut pour les deux chemins : le modèle en renvoie souvent zéro ou une, et le
+    repli déterministe en écrivait des constantes. Ce qui vient du modèle est
+    conservé et passe devant — il a lu le message, il sait des choses que l'état du
+    jour ignore. Le classeur ne fait que remplir les places restantes.
+    """
+    widget = decision.get("widget")
+    exclude = {widget["type"]} if widget else set()
+    existing = [s for s in (decision.get("suggestions") or [])]
+    for label in next_step.suggestions_for(state, None, exclude=exclude):
+        if label not in existing and len(existing) < 3:
+            existing.append(label)
+    decision["suggestions"] = existing
+
+
 async def respond(user: dict[str, Any], text: str) -> dict[str, Any]:
     """Retourne la décision : réponse, widget éventuel, suggestions, citations."""
     cap = capture_mod.parse(text)
@@ -555,6 +666,7 @@ async def respond(user: dict[str, Any], text: str) -> dict[str, Any]:
         engine = "local"
 
     decision.update({"citations": citations, "engine": engine, "risk": False, "capture": cap})
+    _fill_suggestions(decision, context["state"])
     return decision
 
 
@@ -590,6 +702,7 @@ async def respond_stream(user: dict[str, Any], text: str):
     if not (bool(user.get("ai_consent")) and settings.has_llm):
         decision = _deterministic(context, text, cap, _local_reason(user))
         decision.update({"citations": citations, "engine": "local", "risk": False})
+        _fill_suggestions(decision, context["state"])
         yield ("engine", "local")
         yield ("token", decision["reply"])
         yield ("decision", decision)
@@ -625,6 +738,7 @@ async def respond_stream(user: dict[str, Any], text: str):
     else:
         decision = _sanitise(footer, cap, reply=prose)
     decision.update({"citations": citations, "engine": engine, "risk": False})
+    _fill_suggestions(decision, context["state"])
 
     # Rattrapage : si la prose finale dépasse ce qui a été diffusé (reste retenu
     # par prudence), on envoie la fin avant de clore.
@@ -647,86 +761,13 @@ def _hold_back(buffer: str) -> str:
 SLUG_WIDGETS = program.SLUG_WIDGETS
 
 
-def _citation_for(item: dict[str, Any]) -> dict[str, Any]:
-    """La fiche de preuve d'une activité, au format des citations du fil.
-
-    C'est ce qui alimente le panneau « D'OÙ ÇA SORT » : le mécanisme, le niveau de
-    preuve et les références de l'activité, plus les observations personnelles qui
-    l'ont déclenchée. `build_day` produit déjà `triggered_by` dans ce but ; il
-    suffit de le rendre.
-    """
-    activity = item["activity"]
-    triggers = [
-        f"{obs.get('libelle')} : {obs.get('valeur')} — {obs.get('methode')}"
-        for obs in (item.get("triggered_by") or [])
-        if obs.get("libelle")
-    ]
-    return {
-        "doc_id": activity.get("kb_doc_id") or activity["slug"],
-        "titre": activity["title"],
-        "niveau_de_preuve": activity.get("evidence_level"),
-        "categorie": activity.get("category"),
-        "sources": activity.get("sources") or [],
-        "extraits": [activity.get("mechanism"), *triggers],
-        "recuperation": {"origine": "programme du jour", "slot": item["slot"]},
-    }
-
-
-def _decision_for_item(item: dict[str, Any], suggestions: list[str]) -> dict[str, Any]:
-    """Transforme un item du programme du jour en décision du fil.
-
-    La justification vient de `why_for_you`, écrite par `program.py` avec les
-    chiffres de la personne. On ne la reformule pas : elle est déjà personnalisée,
-    et la faire réécrire par un modèle ne ferait qu'ajouter un risque d'invention.
-    """
-    widget_type = SLUG_WIDGETS.get(item["activity"]["slug"], None)
-    activity = item["activity"]
-    duration = activity.get("duration_min")
-    reply = item["why_for_you"]
-    if widget_type is None:
-        reply += "\n\nRien à ouvrir : c'est une habitude à changer, pas un exercice à faire ici."
-    elif duration:
-        reply += f"\n\n**{activity['title']}** — {duration} min."
-    return {
-        "reply": reply,
-        "widget": (
-            {"type": widget_type, "prefill": {}, "a_verifier": []} if widget_type else None
-        ),
-        "suggestions": suggestions,
-        "citations": [_citation_for(item)],
-        "engine": "programme",
-    }
-
-
-def _todays_proposal(user: dict[str, Any], today: dt.date) -> dict[str, Any] | None:
-    """L'item du jour à proposer, choisi dans le programme construit par `program.py`.
-
-    Priorité aux items **adaptatifs** : ce sont ceux que les données de la personne
-    ont déclenchés, donc les seuls dont la justification porte ses propres chiffres.
-    À défaut, un item du module de la semaine. Le socle n'est pas proposé ici : le
-    check-in est déjà traité en amont, et proposer « écris ton journal » sans raison
-    particulière n'apporte rien.
-
-    Renvoie `None` si le programme n'a rien à dire — auquel cas l'appelant garde sa
-    formulation habituelle. Un échec de construction ne doit pas casser l'ouverture
-    du fil : c'est le message d'accueil, il doit toujours arriver.
-    """
-    try:
-        plan = program.build_day(user["id"], user.get("profile") or {}, today)
-    except Exception:  # noqa: BLE001
-        logger.exception("Programme du jour indisponible, ouverture en mode simple")
-        return None
-
-    pending = [
-        item
-        for item in plan.get("items", [])
-        if item.get("status") not in {"fait", "partiel"}
-    ]
-    for slot in ("adaptatif", "module"):
-        for item in pending:
-            if item["slot"] == slot and item["activity"]["slug"] != "checkin-quotidien":
-                return _decision_for_item(item, ["Mes chiffres", "Plus tard"])
-    return None
+# `_citation_for`, `_decision_for_item` et `_todays_proposal` ont quitté ce fichier.
+# Les deux premiers vivent désormais dans `program.citation_for` et
+# `next_step._from_plan` ; le troisième n'existe plus du tout. Il ne regardait que
+# deux créneaux du programme sur quatre — le socle et la pratique corporelle
+# n'étaient jamais proposés dans le fil, ce qui produisait des « rien à faire
+# aujourd'hui » alors que quatre activités calculées le matin même attendaient.
+# Le classement complet est dans `next_step.choose`, et il ne rend jamais `None`.
 
 
 # Les trois créneaux d'ouverture proactive. Un dépôt par créneau, au plus.
@@ -899,8 +940,7 @@ def onboarding_opening(user: dict[str, Any]) -> dict[str, Any]:
 def opening_for_slot(user: dict[str, Any], slot: str) -> dict[str, Any]:
     """L'ouverture du créneau. Trois régimes distincts, pas trois variantes du même.
 
-    - **matin** et **soir** proposent une saisie : c'est `opening()`, qui choisit déjà
-      le moment dû et sait quoi dire quand tout est à jour.
+    - **matin** et **soir** proposent la première étape que le classeur retient.
     - **midi** ne demande rien à remplir. C'est une question, et une seule. Réclamer un
       troisième formulaire en milieu de journée aurait fait abandonner les deux autres.
     """
@@ -914,6 +954,11 @@ def opening_for_slot(user: dict[str, Any], slot: str) -> dict[str, Any]:
     # Le journal libre est proposé pour recueillir la réponse : elle ira en mémoire
     # vectorisée, donc elle sera retrouvable des mois plus tard. Une question posée
     # sans endroit pour répondre est une question perdue.
+    #
+    # Les propositions sont calculées, plus écrites en dur. L'ancienne paire
+    # « Rien à signaler / Comment je me sens là » offrait une porte de sortie avant
+    # même de savoir s'il y avait matière, et « Rien à signaler » repartait en message
+    # libre vers le modèle : un appel payant pour n'enregistrer strictement rien.
     return {
         "reply": question,
         "widget": {
@@ -921,116 +966,47 @@ def opening_for_slot(user: dict[str, Any], slot: str) -> dict[str, Any]:
             "prefill": {"situation": question},
             "a_verifier": [],
         },
-        "suggestions": ["Rien à signaler", "Comment je me sens là"],
+        "suggestions": next_step.suggestions_for(state, None, exclude={"journal"}),
         "citations": [],
         "engine": "question-du-jour",
     }
 
 
 def opening(user: dict[str, Any]) -> dict[str, Any]:
-    """Message d'ouverture du jour. Déterministe : rapide, gratuit, prévisible."""
+    """Message d'ouverture du jour. Déterministe : rapide, gratuit, prévisible.
+
+    Ce n'est plus une cascade de cas particuliers mais un habillage du classeur :
+    la salutation et la reprise du chiffre du jour d'un côté, le choix de l'étape
+    de l'autre. Le partage compte — l'ancienne cascade se terminait sur trois
+    impasses (« rien à faire aujourd'hui », « tu veux faire quoi ? ») parce que
+    chacune de ses branches devait prévoir son propre repli. Le classeur, lui, en
+    a un seul, et il n'est jamais vide.
+    """
     state = day_state(user["id"])
     name = (user.get("display_name") or "").strip()
     hello = f"Salut {name}." if name else "Salut."
-
-    # --- Régime d'entretien -------------------------------------------------
-    # Ce qui distingue les personnes qui rechutent de celles qui ne rechutent pas,
-    # c'est de continuer les expositions après la guérison : l'évitement se
-    # réinstalle silencieusement, par petites décisions confortables.
-    if state["status"] == "entretien":
-        if state["exposition_due"]:
-            since = state["jours_depuis_exposition"]
-            when = f"{since} jours" if since is not None else "un moment"
-            return {
-                "reply": (
-                    f"Tu es en régime d'entretien, et ta dernière exposition volontaire date de "
-                    f"**{when}**. Une par semaine, même quand tout va bien : c'est ce qui empêche "
-                    "l'évitement de revenir sans bruit."
-                ),
-                "widget": {"type": "exposition", "prefill": {}, "a_verifier": []},
-                "suggestions": ["Mes chiffres", "Plus tard"],
-            }
-        if not state["checkin_done"]:
-            return {
-                "reply": (
-                    f"{hello} Entretien : check-in hebdomadaire, GAD-7 mensuel, une exposition par "
-                    "semaine. Rien d'autre à faire."
-                ),
-                "widget": {"type": "soir", "prefill": {}, "a_verifier": []},
-                "suggestions": ["Mes chiffres", "Mon rapport"],
-            }
-        return {
-            "reply": "Entretien, et tout est à jour. Rien à faire aujourd'hui.",
-            "widget": None,
-            "suggestions": ["Mes chiffres", "Mon rapport", "Respirer 5 min"],
-        }
-
-    # Deux moments, deux questions distinctes. Le sommeil se demande au réveil :
-    # le rappel se dégrade dès que l'agenda n'est pas rempli le matin, et
-    # l'estimation rétrospective porte un biais qui n'est pas constant. La journée
-    # se raconte le soir, quand elle est finie.
-    due = _moment_due(state)
-    if due is not None:
-        streak = state["streak"]
-        if due == "matin":
-            line = (
-                f"{hello} La nuit d'abord : combien t'as dormi, et comment tu te sens là. "
-                "Trente secondes."
-            )
-            if streak >= 2:
-                line = (
-                    f"**{streak} jours d'affilée.** La nuit d'abord : combien t'as dormi, et "
-                    "comment tu te sens là."
-                )
-        else:
-            line = (
-                "La journée est finie — on la note. Le pic et la moyenne, pas un chiffre unique : "
-                "sous anxiété la mémoire retient les pires moments."
-            )
-            if state["mesures_instantanees"]:
-                line = (
-                    f"T'as noté **{state['mesures_instantanees']} fois** comment tu te sentais "
-                    f"aujourd'hui (pic à **{state['pic_instantane']}/10**). Je te propose le pic et "
-                    "la moyenne calculés — vérifie, corrige si c'est faux."
-                )
-        return {
-            "reply": line,
-            "widget": {"type": due, "prefill": {}, "a_verifier": []},
-            "suggestions": ["Comment je me sens là", "Respirer 5 min"],
-        }
-
-    if state["gad7_due"]:
-        return {
-            "reply": (
-                f"Check-in fait (anxiété **{state['anxiety_today']}/10**). Le GAD-7 est dû cette "
-                "semaine : c'est lui qui dit si quelque chose bouge vraiment."
-            ),
-            "widget": {"type": "gad7", "prefill": {}, "a_verifier": []},
-            "suggestions": ["Mes chiffres", "Plus tard"],
-        }
 
     # Une séance intense hier, et rien de noté depuis : on demande. C'est ce qui
     # remplace la détection automatique de crise — impossible avec l'API Whoop, qui
     # n'expose aucune série de fréquence cardiaque, et de toute façon indésirable :
     # une fausse alerte de panique est un déclencheur de panique.
     #
-    # Une question n'a pas ce défaut. Elle ne peut rien annoncer.
+    # Traité avant le classeur et non dedans : c'est un événement daté d'hier, il
+    # périme, et il ne se range pas dans un ordre de priorité stable.
     session = _intense_session_yesterday(user["id"])
     if session is not None:
+        session.setdefault("citations", [])
+        session["suggestions"] = next_step.suggestions_for(state, None)
         return session
 
-    # Le check-in est fait et rien n'est dû : c'est ici que le programme du jour
-    # prend la parole. Sans ça, l'ouverture s'arrêtait à « tu veux faire quoi ? » —
-    # alors que `build_day` avait déjà calculé quoi proposer, et pourquoi.
-    proposal = _todays_proposal(user, dt.date.today())
-    if proposal is not None:
-        anxiety = state["anxiety_today"]
-        prefix = f"Check-in fait (anxiété **{anxiety}/10**). " if anxiety is not None else ""
-        proposal["reply"] = prefix + proposal["reply"]
-        return proposal
+    step = next_step.choose(user, state)
 
-    return {
-        "reply": f"Check-in fait (anxiété **{state['anxiety_today']}/10**). Tu veux faire quoi ?",
-        "widget": None,
-        "suggestions": ["Respirer 5 min", "Comment je vais ?", "Mes chiffres"],
-    }
+    # La salutation ne s'ajoute qu'au premier créneau de la journée — celui où rien
+    # n'est encore noté. Dire « salut » le soir à quelqu'un qui a déjà écrit trois
+    # fois dans la journée sonne comme une application qui ne suit pas.
+    if not state["checkin_done"] and state["mesures_instantanees"] == 0:
+        step["reply"] = f"{hello} {step['reply']}"
+    elif state["anxiety_today"] is not None:
+        step["reply"] = f"Check-in fait (anxiété **{state['anxiety_today']}/10**). {step['reply']}"
+
+    return step

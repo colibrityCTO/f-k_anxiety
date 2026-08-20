@@ -4,7 +4,15 @@ import type { ThreadItem } from '../lib/types'
 
 /**
  * Un message est une fenêtre. Celle de l'assistant est un cadre ouvert, celle de
- * l'utilisateur un bloc plein inversé : vide contre plein, sans une seule couleur.
+ * l'utilisateur un bloc plein inversé : vide contre plein.
+ *
+ * Une exception, et c'est la seule couleur de toute l'application : les
+ * **explications**. Ce registre-là n'est pas une instruction, c'est ce qu'il faut
+ * comprendre — la théorie du module, le mécanisme d'un exercice, les
+ * contre-indications. Il n'apparaît qu'une fois par notion, jamais deux, et il fallait
+ * qu'on puisse le reconnaître sans le lire : quelque chose qu'on voit une seule fois
+ * doit se distinguer de ce qui revient tous les jours, sinon il se perd dans le flux
+ * et l'effort d'écriture est gâché.
  *
  * Les réponses pré-choisies sont attachées au message de l'assistant, jamais dans
  * une barre permanente. Elles disparaissent dès qu'un choix est fait, puisque le
@@ -20,11 +28,15 @@ export default function Message({
   onChoose: (text: string) => void
 }) {
   const mine = item.role === 'user'
+  const explain = item.engine === 'explication'
   const [used, setUsed] = useState(false)
   const suggestions = mine || used ? [] : item.suggestions
 
   return (
-    <div className={`msg${mine ? ' msg-me' : ''}`}>
+    <div className={`msg${mine ? ' msg-me' : ''}${explain ? ' msg-explain' : ''}`}>
+      {/* L'étiquette dit ce que c'est **et** ce que ça coûte : lu une fois, on n'y
+          revient pas. Sans elle, un bloc coloré ressemble à une alerte. */}
+      {explain && <span className="msg-explain-tag">À comprendre · dit une seule fois</span>}
       {mine ? <p>{item.content}</p> : <Markdown text={item.content ?? ''} />}
 
       {item.citations.length > 0 && !mine && <Citations item={item} />}

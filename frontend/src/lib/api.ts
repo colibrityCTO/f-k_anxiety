@@ -23,7 +23,7 @@ import type {
   ThreadItem,
   ThreadPage,
   User,
-  WidgetType,
+  LaunchType,
 } from './types'
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
@@ -123,7 +123,7 @@ export const api = {
   threadBefore: (before: number, limit = 50) =>
     get<ThreadPage>(`/chat/thread?before=${before}&limit=${limit}`),
   send: (text: string) => post<ItemsResponse>('/chat/message', { text }),
-  openWidget: (type: WidgetType, label?: string, prefill?: Record<string, unknown>) =>
+  openWidget: (type: LaunchType, label?: string, prefill?: Record<string, unknown>) =>
     post<ItemsResponse>('/chat/widget', { type, label, prefill: prefill ?? {} }),
   submitWidget: (itemId: string, values: Record<string, unknown>) =>
     post<ItemsResponse>(`/chat/widget/${itemId}/submit`, { values }),

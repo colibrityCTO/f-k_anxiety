@@ -635,6 +635,35 @@ def adaptive_items(
 # --- Construction de la journée ---------------------------------------------
 
 
+def citation_for(item: dict[str, Any]) -> dict[str, Any]:
+    """La fiche de preuve d'une activité, au format des citations du fil.
+
+    C'est ce qui alimente le panneau « D'OÙ ÇA SORT » : le mécanisme, le niveau de
+    preuve et les références de l'activité, plus les observations personnelles qui
+    l'ont déclenchée. `build_day` produit déjà `triggered_by` dans ce but ; il
+    suffit de le rendre.
+
+    Vit ici et non dans `chat.py` : deux appelants en ont besoin — l'ouverture du fil
+    et le classeur — et la placer chez l'un des deux aurait créé un import circulaire
+    au premier usage par l'autre.
+    """
+    activity = item["activity"]
+    triggers = [
+        f"{obs.get('libelle')} : {obs.get('valeur')} — {obs.get('methode')}"
+        for obs in (item.get("triggered_by") or [])
+        if obs.get("libelle")
+    ]
+    return {
+        "doc_id": activity.get("kb_doc_id") or activity["slug"],
+        "titre": activity["title"],
+        "niveau_de_preuve": activity.get("evidence_level"),
+        "categorie": activity.get("category"),
+        "sources": activity.get("sources") or [],
+        "extraits": [activity.get("mechanism"), *triggers],
+        "recuperation": {"origine": "programme du jour", "slot": item["slot"]},
+    }
+
+
 def _activities_by_slug(slugs: list[str]) -> dict[str, dict[str, Any]]:
     if not slugs:
         return {}
@@ -803,15 +832,54 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
     for item in adaptive:
         _add(item["slug"], "adaptatif", item["why"], item["triggered_by"])
 
+    # --- Matérialiser ce qui est proposé ------------------------------------
+    #
+    # Sans ces lignes, « pas fait » n'existait pas : `activity_logs` ne recevait
+    # que des `fait`, écrits par les gestionnaires de validation. L'assiduité se
+    # calculant en `fait / (fait + pas_fait)`, son dénominateur ne contenait donc
+    # que des réussites — elle valait 1.0 en permanence, verdict « bonne », pour
+    # quelqu'un qui n'avait rien fait de la semaine. Le signal
+    # `activites_non_faites` était vide par construction, et la notice « programme
+    # allégé » (seuil 0,4) était du code mort.
+    #
+    # `propose` est donc écrit au moment où l'item est calculé. `DO NOTHING` : une
+    # ligne existante n'est jamais rétrogradée, un `fait` du matin survit à un
+    # recalcul de l'après-midi.
+    #
+    # Uniquement pour aujourd'hui : `build_day` accepte une date passée
+    # (`GET /program/today?day=`), et fabriquer rétroactivement des « proposées »
+    # pour un jour révolu inventerait un historique qui n'a pas eu lieu.
+    if day == dt.date.today() and items:
+        db.execute(
+            """
+            INSERT INTO activity_logs (user_id, activity_slug, entry_date, status)
+            SELECT %s, slug, %s, 'propose' FROM unnest(%s::text[]) AS slug
+            ON CONFLICT (user_id, activity_slug, entry_date) DO NOTHING
+            """,
+            (user_id, day, [item["activity"]["slug"] for item in items]),
+        )
+        # Les statuts fraîchement écrits doivent apparaître dans ce qu'on renvoie,
+        # sinon le premier appel de la journée montrerait `status: null` là où la
+        # base dit déjà `propose`.
+        for item in items:
+            if item["status"] is None:
+                item["status"] = "propose"
+
     # Assiduité et série
     adherence_signal = signals_mod.signal_by_id(sig, "adherence")
     adherence_7j = 0.0
+    # Les items encore `propose` **d'aujourd'hui** sont exclus : la journée n'est
+    # pas finie, les compter comme non faits afficherait une assiduité en chute
+    # libre chaque matin puis remontant le soir. Ceux des jours précédents, eux,
+    # comptent bien comme non faits — c'est exactement ce qu'ils sont.
     rows = db.query_all(
         """
         SELECT status, count(*) AS n FROM activity_logs
-        WHERE user_id = %s AND entry_date > %s GROUP BY status
+        WHERE user_id = %s AND entry_date > %s
+          AND NOT (status = 'propose' AND entry_date = %s)
+        GROUP BY status
         """,
-        (user_id, day - dt.timedelta(days=7)),
+        (user_id, day - dt.timedelta(days=7), day),
     )
     total = sum(int(r["n"]) for r in rows)
     if total:

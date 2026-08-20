@@ -22,11 +22,39 @@ Deux façons d'entrer une donnée :
    dîner » → l'extraction déterministe lit `anxiété 8`, `sommeil 5 h`, `1 panique`,
    `évitement 7`, et le check-in arrive **pré-rempli** dans le fil. Rien n'est enregistré avant
    que tu valides.
-2. **Tu ouvres le widget toi-même** avec le +. Valable pour les quatorze widgets.
+2. **Tu ouvres le widget toi-même** avec le +. Le lanceur a deux niveaux et quatre
+   entrées : **Mon parcours**, **Noter**, **Pratiquer** et **Mes données**. « Noter »
+   n'est pas un formulaire mais une demande — le serveur choisit le matin, le soir ou
+   la mesure instantanée selon l'heure et selon ce qui manque déjà, ce qui rend
+   impossible de résumer une journée qui n'est pas finie ou de saisir deux fois la
+   même nuit.
 
 Chaque widget et chaque conclusion porte son panneau **« D'OÙ ÇA SORT »** : le mécanisme, le
 niveau de preuve, les références cliquables, et les données personnelles exactes qui ont
 déclenché la proposition.
+
+---
+
+## Il y a toujours une étape suivante
+
+`next_step.choose()` **ne renvoie jamais rien de vide**. Le classement est déterministe
+et se lit d'un coup dans `_ranked()` : la saisie du créneau, le GAD-7 s'il est dû, ce
+que tes données ont déclenché, le module de la semaine, le socle, la pratique du soir,
+une question dont la réponse manque encore, puis une fiche du corpus jamais lue. Le
+modèle ne choisit pas — il ne rédige même pas la justification, qui vient de
+`program.py` avec tes chiffres.
+
+Il est rappelé **après chaque validation**, pas seulement à l'ouverture. C'est ce qui
+manquait : l'ouverture proactive est verrouillée à un dépôt par créneau, donc valider
+son check-in à 8 h fermait la journée jusqu'à 17 h — alors que vingt-huit activités et
+une trentaine de fiches attendaient. Un refus explicite fait exception : reporter une
+saisie ne la remet pas en avant dans la foulée, elle reste accessible par « Noter ».
+
+**Ce qui est attendu et ce qui est proposé sont deux choses.** La barre du haut ne
+compte que le socle — noter, respirer, écrire. Le programme propose cinq à huit items
+par jour, mais les afficher tous dans un compteur revenait à annoncer « 1/7 » à
+quelqu'un qui avait fait exactement ce qu'on lui demandait. Et il n'y a pas de série à
+préserver : un compteur qui se remet à zéro punit le jour où c'était le plus dur.
 
 ---
 
@@ -69,6 +97,7 @@ fuck_anxiety/
 │   │   ├── security.py          bcrypt + JWT HS256
 │   │   ├── capture.py           français libre → valeurs structurées (déterministe)
 │   │   ├── chat.py              orchestrateur : réponse + widget à ouvrir + suggestions
+│   │   ├── next_step.py         le classeur : ce qu'il y a à proposer, maintenant
 │   │   ├── memory.py            mémoire personnelle vectorisée (rendu, écriture, recherche)
 │   │   ├── signals.py           statistiques sur tout l'historique + drapeaux rouges
 │   │   ├── search.py            recherche hybride du corpus (vectoriel + plein texte, RRF)
@@ -88,7 +117,7 @@ fuck_anxiety/
 │   │   ├── screens/Auth.tsx     le seul écran hors du fil
 │   │   ├── screens/Chat.tsx     le fil
 │   │   ├── components/          Composer, Message, WidgetHost, Charts, Markdown, WhyBox…
-│   │   ├── widgets/             les 14 widgets
+│   │   ├── widgets/             les widgets du fil
 │   │   └── lib/reminder.ts      rappel quotidien (Notification API)
 │   └── public/                  manifest PWA, service worker, icônes
 └── ROADMAP.md                   V1 / V2 / V3
@@ -260,10 +289,16 @@ libre → widget pré-rempli, **aucune écriture avant validation**, validation 
 fige, refus de revalidation (409), GAD-7 et sa DMCI, respiration, « pas maintenant », mémoire
 vectorisée, drapeau rouge sans widget proposé.
 
+`smoke_v5_next_step.py` couvre la garantie qui manquait : le classeur propose toujours
+quelque chose, valider ou reporter ne ferme pas la journée, les suggestions dépendent de
+l'état réel, « Noter » est résolu côté serveur, les widgets retirés ne sont plus ouvrables,
+et l'assiduité a enfin un dénominateur — elle valait 100 % en permanence.
+
 ```bash
 cd backend && PYTHONPATH=. python tests/smoke_v2.py    # exposition, méditation, échelles, streaming, rétroactif
 cd backend && PYTHONPATH=. python tests/smoke_v3.py    # intéroceptif, entretien, bilan hebdo, rapport
 cd backend && PYTHONPATH=. python tests/smoke_e2e.py   # l'API métier (24 endpoints)
+cd backend && PYTHONPATH=. python tests/smoke_v5_next_step.py  # le classeur : jamais de cul-de-sac
 cd frontend && npx tsc --noEmit && npm run build
 ```
 

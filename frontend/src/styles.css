@@ -1,12 +1,22 @@
 /* ===========================================================================
    FUCK ANXIETY — BOLD MONOCHROME / NEO-BRUTALIST
-   Noir pur, blanc pur. Aucun arrondi. Aucune couleur. Transitions sèches.
+   Noir pur, blanc pur. Aucun arrondi. Transitions sèches.
    Les états se jouent en inversion de contraste ou en opacité.
+
+   UNE seule couleur dans tout le produit, et elle a un seul emploi : marquer les
+   **explications** — ce qui est dit une fois et ne revient pas. Un contenu qu'on ne
+   verra qu'une seule fois doit se reconnaître avant d'être lu, sinon il se noie dans
+   ce qui revient tous les jours. Jaune et non rouge, délibérément : dans une
+   application sur l'anxiété, le rouge est un signal d'alarme, et l'alarme est
+   précisément ce qu'on ne veut pas déclencher pour un paragraphe de pédagogie.
+   Si une deuxième couleur apparaît un jour, cette distinction ne vaut plus rien.
    =========================================================================== */
 
 :root {
   --ink: #000000;
   --paper: #ffffff;
+  /* Voir l'en-tête : usage unique, les explications. */
+  --accent: #ffe600;
   --display: 'Anton', 'Haettenschweiler', 'Arial Narrow', Impact, sans-serif;
   --body: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
   --b: 2px;
@@ -197,6 +207,32 @@ code {
   color: var(--ink);
   font-weight: 500;
 }
+/* L'explication : un autre registre, donc un autre traitement.
+   Cadre et texte en accent, trait épais à gauche — la même géométrie que le reste,
+   rien d'arrondi, aucun fond plein : un pavé de couleur pleine se lirait comme une
+   alerte, et ce n'en est pas une. */
+.msg-explain {
+  border-color: var(--accent);
+  border-left-width: 6px;
+  color: var(--accent);
+}
+.msg-explain-tag {
+  display: block;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  opacity: 0.8;
+}
+/* Les liens et le gras à l'intérieur héritent de l'accent : un mot blanc au milieu
+   d'un paragraphe coloré casse la lecture au lieu d'appuyer dessus. */
+.msg-explain strong,
+.msg-explain b,
+.msg-explain a {
+  color: var(--accent);
+}
+
 /* Réponses pré-choisies proposées par l'IA, dans son message. */
 .msg-actions {
   display: flex;
@@ -912,6 +948,88 @@ th {
   fill: none;
   stroke-width: 2.5;
 }
+/* Une tête de groupe se distingue d'une tuile qui lance : le trait est doublé à
+   gauche, comme un onglet. Sans marque, seize tuiles à plat et quatre tuiles dont
+   deux ouvrent un sous-menu se ressemblaient trop. */
+.tile-group {
+  border-left-width: 6px;
+}
+.tile-hint {
+  font-size: 0.5rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.launcher-back {
+  margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.launcher-back svg {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.5;
+}
+
+/* --- Le contrat du jour, en haut --------------------------------------- */
+
+/* Trois cases, cliquables, et un compte. Volontairement muet quand tout est fait :
+   tenir le socle est la normale, pas une performance à saluer. */
+.dayprog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.dayprog-cells {
+  display: flex;
+  gap: 4px;
+}
+.dayprog-cell {
+  border: 2px solid currentColor;
+  padding: 3px 7px;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  opacity: 0.45;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+/* Fond plein pour ce qui est fait, contour seul pour ce qui reste : la même
+   inversion que le reste de l'interface, où le plein marque l'état accompli. */
+.dayprog-cell.is-done {
+  opacity: 1;
+  background: var(--paper);
+  color: var(--ink);
+}
+.dayprog-cell:disabled {
+  cursor: default;
+}
+.dayprog-count {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+/* Sur un écran étroit le nom de l'application prend déjà toute la largeur : les
+   cases passent sous lui plutôt que de comprimer les trois éléments de la barre. */
+@media (max-width: 560px) {
+  .topbar {
+    flex-wrap: wrap;
+  }
+  .dayprog {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+  }
+}
 
 /* --- Connexion : le seul écran hors du fil ---------------------------- */
 
@@ -1416,6 +1534,18 @@ th {
 }
 .qc-stale {
   margin-top: var(--g3);
+}
+/* L'alerte d'usage : même registre que les explications — quelque chose à
+   comprendre, pas une instruction — donc le même accent. Trait épais à gauche,
+   aucun fond plein : sur un écran de sortie de crise, un pavé de couleur pleine se
+   lirait comme une nouvelle alarme. */
+.qc-alert {
+  border: var(--b) solid var(--accent);
+  border-left-width: 6px;
+  color: var(--accent);
+  padding: var(--g2);
+  margin: var(--g2) 0 0;
+  line-height: 1.5;
 }
 /* Le bouton du composer. Inversé en permanence : il doit se trouver sans le
    chercher, et ne jamais être confondu avec « envoyer ». */

@@ -282,6 +282,18 @@ export default function QuickChill({
               </p>
             )}
 
+            {/* Le garde-fou anti-comportement de sécurité. Il était calculé par le
+                serveur — deux conditions simultanées, usage élevé **et** GAD-7 qui ne
+                bouge pas au-delà de sa DMCI — envoyé dans le contexte, et affiché
+                nulle part. Un écran d'urgence qui devient ce qui rassure travaille
+                contre le traitement, et c'est exactement ce que cette phrase dit.
+
+                Placé **après** l'épisode, jamais avant : pendant la crise, ce serait
+                un reproche au pire moment. Ici, la crise est passée. */}
+            {context.alerte_usage && (
+              <p className="qc-alert">{context.alerte_usage.replace(/\*\*/g, '')}</p>
+            )}
+
             <div className="qc-foot">
               <button className="btn-primary" disabled={saving} onClick={save}>
                 {saving ? 'Enregistrement…' : 'Enregistrer'}

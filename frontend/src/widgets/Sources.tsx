@@ -4,15 +4,33 @@ import type { WidgetProps } from '../components/WidgetHost'
 import { api } from '../lib/api'
 import type { KbDoc, KbDocDetail } from '../lib/types'
 
-/** Le corpus, consultable. C'est exactement ce que l'assistant lit — rien d'autre. */
-export default function Sources(_props: WidgetProps) {
+/**
+ * Le corpus, consultable. C'est exactement ce que l'assistant lit — rien d'autre.
+ *
+ * `prefill.doc_id` ouvre directement une fiche. C'est ce dont se sert le classeur
+ * pour les micro-leçons : quand plus rien n'est dû, il propose une fiche jamais lue,
+ * la plus proche du module en cours. Renvoyer vers la liste des trente aurait
+ * transformé une lecture de deux minutes en une recherche.
+ */
+export default function Sources({ item }: WidgetProps) {
   const [docs, setDocs] = useState<KbDoc[]>([])
   const [open, setOpen] = useState<KbDocDetail | null>(null)
   const [loading, setLoading] = useState(false)
+  const focus = item?.payload?.prefill?.doc_id as string | undefined
 
   useEffect(() => {
     api.knowledge().then(setDocs).catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    if (!focus) return
+    setLoading(true)
+    api
+      .knowledgeDoc(focus)
+      .then(setOpen)
+      .catch(() => undefined)
+      .finally(() => setLoading(false))
+  }, [focus])
 
   async function openDoc(docId: string) {
     setLoading(true)

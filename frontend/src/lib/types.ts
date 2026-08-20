@@ -39,6 +39,15 @@ export type WidgetType =
   | 'onboarding'
   | 'jour'
 
+/**
+ * Ce qu'on peut demander d'ouvrir. Superset de `WidgetType` : `noter` n'est pas un
+ * widget mais une **demande**, que le serveur résout en `matin`, `soir` ou
+ * `maintenant` selon l'heure et selon ce qui manque déjà. Le front ne connaît donc
+ * jamais d'avance le formulaire qu'il va recevoir — et c'est exactement le but :
+ * c'est cette ignorance qui empêche d'ouvrir « Ce soir » à dix heures du matin.
+ */
+export type LaunchType = WidgetType | 'noter'
+
 export type JournalEntry = {
   id?: string
   entry_date?: string
@@ -238,6 +247,21 @@ export type DayState = {
   }
   exposition_due: boolean
   jours_depuis_exposition: number | null
+  /** Jours réellement notés depuis le début. Garde de tout ce qui exige de l'historique. */
+  jours_notes: number
+  /**
+   * Le contrat du jour, et lui seul : noter, respirer, écrire.
+   *
+   * Distinct de ce que le programme *propose* — cinq à huit items. « Mon parcours »
+   * affichait `fait / total` sur l'ensemble tout en écrivant qu'un seul était
+   * attendu : quelqu'un qui avait fait exactement ce qu'on lui demandait lisait
+   * « 1/7 ». La barre du haut ne compte que ce qui est réellement dû.
+   */
+  socle: {
+    items: { slug: string; label: string; fait: boolean }[]
+    fait: number
+    total: number
+  }
 }
 
 export type MemoryStats = {
@@ -489,7 +513,13 @@ export type ProgramDayItem = {
   why_for_you: string
   /** Les observations exactes qui ont déclenché l'item — le panneau « d'où ça sort ». */
   triggered_by: Record<string, unknown>[]
-  status?: 'fait' | 'partiel' | 'pas_fait' | 'reporte' | null
+  /**
+   * `propose` est écrit par le serveur au moment où l'item est calculé. C'est lui
+   * qui donne enfin un dénominateur à l'assiduité : avant, seuls des « fait »
+   * étaient enregistrés, donc la part des activités réalisées valait 100 % en
+   * permanence, y compris pour quelqu'un qui n'avait rien fait.
+   */
+  status?: 'propose' | 'fait' | 'partiel' | 'pas_fait' | 'reporte' | null
   /** Le widget que l'item ouvre, ou `null` pour un conseil d'hygiène. */
   widget?: string | null
 }

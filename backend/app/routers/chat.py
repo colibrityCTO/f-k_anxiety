@@ -24,7 +24,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from .. import analysis, chat as chat_mod, db, memory
+from .. import analysis, chat as chat_mod, db, memory, next_step, program
 from .. import signals as signals_mod
 from ..deps import CurrentUser
 from . import assessments as assessments_mod
@@ -33,8 +33,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 WidgetType = Literal[
-    # V1
-    "checkin", "breath", "journal", "gad7", "stats", "analysis", "sources", "account", "logout",
+    # V1. `account` et `logout` ne sont plus ouvrables : le compte a sa page, en haut
+    # à droite, et changer son heure de rappel n'a rien à faire dans un journal de
+    # santé. Le front sait encore les **rendre** — des items de ces types dorment dans
+    # les fils existants — mais plus rien n'en crée.
+    "checkin", "breath", "journal", "gad7", "stats", "analysis", "sources",
     # V2
     "exposition", "meditation", "memoire", "echelles",
     # V3
@@ -52,6 +55,13 @@ WidgetType = Literal[
     "onboarding",
     # Le parcours du jour : une lecture, elle n'écrit rien.
     "jour",
+    # `noter` n'est pas un widget : c'est une **demande**, que le serveur résout en
+    # `matin`, `soir` ou `maintenant` selon l'heure et ce qui manque déjà. La grille
+    # proposait les trois côte à côte, ce qui laissait ouvrir « Ce soir » à 10 h —
+    # alors que `_moment_due` l'interdit côté serveur, et pour une bonne raison : à
+    # midi la journée n'est pas finie, la faire résumer produit un chiffre faux.
+    # Une seule entrée, et c'est l'application qui sait laquelle des trois ouvrir.
+    "noter",
 ]
 
 # Widgets de **consultation** : ils n'écrivent aucune donnée de santé, ils
@@ -81,13 +91,40 @@ def _prefill_for(user_id: str, widget_type: str, day: dt.date | None = None) -> 
     (« calculé sur tes 5 mesures — corrige si c'est faux ») au lieu de le présenter
     comme une saisie de l'utilisateur.
 
-    Le sommeil du matin passera par ici quand un bracelet sera branché : la valeur
-    du capteur sera proposée avec `sleep_source = 'capteur'`, et la corriger la
-    basculera en `corrige`. Aucune valeur de capteur n'écrase une saisie.
+    Le sommeil du matin passe par ici quand un bracelet est branché : la valeur du
+    capteur est proposée avec `sleep_source = 'capteur'`, et la corriger la bascule
+    en `corrige`. Aucune valeur de capteur n'écrase une saisie.
     """
     day = day or dt.date.today()
     prefill: dict[str, Any] = {}
     derived: list[str] = []
+
+    if widget_type == "matin":
+        # Le bracelet a déjà mesuré la nuit : la redemander est une question dont on
+        # connaît la réponse, et la réponse du capteur est meilleure que le souvenir.
+        # La valeur reste **modifiable** et marquée comme dérivée : aucune donnée de
+        # capteur n'écrase une saisie, et `sleep_source` bascule en « corrige » si la
+        # personne la change.
+        night = db.query_one(
+            """
+            SELECT sleep_hours, sleep_efficiency FROM wearable_daily
+            WHERE user_id = %s AND entry_date = %s AND sleep_hours IS NOT NULL
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (user_id, day),
+        )
+        if night and night["sleep_hours"] is not None:
+            prefill["sleep_hours"] = float(night["sleep_hours"])
+            prefill["sleep_source"] = "capteur"
+            derived.append("sleep_hours")
+            # L'efficacité du sommeil est la meilleure approximation objective de la
+            # qualité ressentie dont on dispose. Proposée, jamais imposée : elle
+            # mesure la continuité de la nuit, pas ce qu'on en garde au réveil.
+            if night["sleep_efficiency"] is not None:
+                prefill["sleep_quality_0_10"] = max(
+                    0, min(10, round(float(night["sleep_efficiency"]) / 10))
+                )
+                derived.append("sleep_quality_0_10")
 
     if widget_type == "soir":
         spot = db.query_one(
@@ -216,6 +253,25 @@ def _items_from_decision(
     """
     items: list[dict[str, Any]] = []
     retired: list[str] = []
+
+    # L'explication passe **avant** la proposition, et dans son propre item. Deux
+    # registres distincts : ce qu'il faut comprendre, puis ce qu'il y a à faire. Les
+    # fondre dans un seul paragraphe est ce qui rendait la justification du module
+    # illisible — la théorie de la semaine et l'instruction du jour dans la même
+    # phrase, répétée à l'identique tous les matins pendant une à trois semaines.
+    #
+    # `engine = 'explication'` est ce que l'écran lit pour la rendre autrement.
+    explication = decision.get("explication")
+    if explication and explication.get("corps"):
+        items.append(
+            _add_item(
+                user_id,
+                "assistant",
+                content=f"**{explication['titre']}**\n\n{explication['corps']}",
+                engine="explication",
+            )
+        )
+
     if decision.get("reply"):
         items.append(
             _add_item(
@@ -600,7 +656,8 @@ def open_widget(payload: WidgetOpenIn, user: CurrentUser) -> dict[str, Any]:
     un doublon n'apporterait qu'une ligne de plus à faire défiler.
     """
     user_id = user["id"]
-    ephemeral = _is_ephemeral(payload.type)
+    widget_type = _resolve_noter(user_id) if payload.type == "noter" else payload.type
+    ephemeral = _is_ephemeral(widget_type)
     retired = _retire_ephemeral(user_id) if ephemeral else []
 
     items: list[dict[str, Any]] = []
@@ -611,9 +668,9 @@ def open_widget(payload: WidgetOpenIn, user: CurrentUser) -> dict[str, Any]:
             user_id,
             "assistant",
             kind="widget",
-            widget_type=payload.type,
+            widget_type=widget_type,
             payload={
-                "prefill": {**_prefill_for(user_id, payload.type), **payload.prefill},
+                "prefill": {**_prefill_for(user_id, widget_type), **payload.prefill},
                 "a_verifier": [],
             },
             status="ouvert",
@@ -623,7 +680,104 @@ def open_widget(payload: WidgetOpenIn, user: CurrentUser) -> dict[str, Any]:
     return {"items": items, "retired": retired}
 
 
+def _resolve_noter(user_id: str) -> str:
+    """Quelle saisie ouvrir quand on demande simplement « noter ».
+
+    L'ordre suit le serveur, pas l'écran : la saisie du créneau si elle manque,
+    sinon la mesure instantanée — qui, elle, n'a ni heure ni quota et peut se
+    refaire autant de fois qu'on veut.
+
+    C'est ce qui règle le doublon : redemander « combien t'as dormi » à quelqu'un
+    dont la nuit est déjà notée n'apporte rien, et la grille le permettait. Ici, si
+    le matin est fait, on ne le repropose pas — on ouvre ce qui a du sens à cette
+    heure-là.
+    """
+    state = chat_mod.day_state(user_id)
+    hour = dt.datetime.now().hour
+    if not state["matin_done"] and hour < chat_mod.EVENING_FROM:
+        return "matin"
+    if not state["soir_done"] and hour >= chat_mod.EVENING_FROM:
+        return "soir"
+    if not state["matin_done"] and not state["soir_done"]:
+        return "matin"
+    return "maintenant"
+
+
 # --- Validation d'un widget -------------------------------------------------
+
+
+# Ce qu'une validation « occupe », au-delà du type de widget lui-même. Sert à ne pas
+# reproposer dans la foulée ce qui vient d'être fait : valider la respiration du jour
+# et s'entendre répondre « et si tu respirais ? » est le genre de détail qui fait
+# fermer l'application.
+_OCCUPIES: dict[str, set[str]] = {
+    "matin": {"matin", "checkin-quotidien", "maintenant"},
+    "soir": {"soir", "checkin-quotidien"},
+    "checkin": {"checkin", "matin", "soir", "checkin-quotidien"},
+    "maintenant": {"maintenant"},
+    "breath": {"breath", "respiration-lente-10", "soupir-physiologique"},
+    "journal": {"journal", "journal-libre", "journal-pensees", "temps-inquietude"},
+    "gad7": {"gad7", "echelles"},
+    "echelles": {"gad7", "echelles"},
+    "meditation": {"meditation"},
+    "interoceptif": {"interoceptif", "exposition-interoceptive"},
+    "exposition": {"exposition", "exposition-in-vivo", "echelle-exposition"},
+    "onboarding": {"onboarding"},
+    "analysis": {"analysis"},
+}
+
+
+def _chain_next(
+    user: dict[str, Any], follow_up: dict[str, Any], widget_type: str | None
+) -> dict[str, Any]:
+    """Ajoute l'étape suivante au commentaire d'une validation.
+
+    C'était le trou principal du produit. Tous les gestionnaires renvoyaient
+    `widget: None`, deux d'entre eux renvoyaient même `suggestions: []` — un
+    cul-de-sac littéral. Et comme l'ouverture proactive est verrouillée à un dépôt
+    par créneau, valider son check-in à 8 h fermait la journée jusqu'à 17 h. Ce
+    n'était pas un manque de contenu : vingt-huit activités et une trentaine de
+    fiches attendaient d'être proposées. C'était l'absence de re-déclenchement.
+
+    Le commentaire du gestionnaire est conservé tel quel — il porte les chiffres
+    réels de ce qui vient d'être enregistré — et l'étape suivante est **collée
+    dessous**, séparée. Deux voix distinctes : ce que tu viens de faire, puis ce
+    qu'il y a après.
+
+    Un gestionnaire qui ouvre déjà un widget garde la main : il sait mieux que le
+    classeur ce que sa propre suite exige.
+    """
+    if follow_up.get("widget"):
+        return follow_up
+
+    exclude = set(_OCCUPIES.get(widget_type or "", set()))
+    if widget_type:
+        exclude.add(widget_type)
+
+    try:
+        state = chat_mod.day_state(user["id"])
+        step = next_step.choose(user, state, exclude=exclude)
+    except Exception:  # noqa: BLE001
+        logger.exception("Étape suivante indisponible après validation")
+        return follow_up
+
+    reply = (follow_up.get("reply") or "").strip()
+    follow_up["reply"] = f"{reply}\n\n{step['reply']}" if reply else step["reply"]
+    follow_up["widget"] = step["widget"]
+    follow_up["explication"] = step.get("explication")
+    # Fusion, pas remplacement. Certains gestionnaires proposent quelque chose que le
+    # classeur ne peut pas deviner — « Encore une répétition » après une exposition
+    # réussie, ou les trois raisons de report qui répondent à la question qu'on vient
+    # de poser. Elles passent devant ; le classeur complète jusqu'à trois.
+    merged = [s for s in (follow_up.get("suggestions") or [])]
+    for label in step["suggestions"]:
+        if label not in merged and len(merged) < 3:
+            merged.append(label)
+    follow_up["suggestions"] = merged
+    # Les citations s'ajoutent, elles ne se remplacent pas : le commentaire de
+    # validation peut déjà en porter, et « D'OÙ ÇA SORT » doit les montrer toutes.
+    follow_up["citations"] = [*(follow_up.get("citations") or []), *(step.get("citations") or [])]
+    return follow_up
 
 
 def _freeze(
@@ -698,6 +852,9 @@ async def submit_widget(
         raise HTTPException(status_code=422, detail=f"Widget « {widget_type} » non enregistrable.")
 
     saved, follow_up = await handler(user, payload.values or {}, background)
+    # L'étape suivante est calculée **après** l'écriture : le classeur relit l'état du
+    # jour, donc il voit la donnée qui vient d'être enregistrée et n'en redemande pas.
+    follow_up = await asyncio.to_thread(_chain_next, user, follow_up, widget_type)
     frozen = await asyncio.to_thread(_freeze, item_id, user_id, saved)
     items, retired = await asyncio.to_thread(_items_from_decision, user_id, follow_up)
     return {"items": [*frozen, *items], "retired": retired}
@@ -706,16 +863,33 @@ async def submit_widget(
 @router.post("/widget/{item_id}/skip")
 def skip_widget(item_id: str, user: CurrentUser) -> dict[str, Any]:
     """« Pas maintenant » : le widget est reporté, et c'est une donnée, pas un échec."""
+    item = db.query_one(
+        "SELECT widget_type FROM thread_items WHERE id = %s AND user_id = %s",
+        (item_id, user["id"]),
+    )
     frozen = _freeze(item_id, user["id"], {}, status="reporte")
-    follow_up = {
-        "reply": (
-            "Noté comme non fait, sans jugement — c'est une donnée utile. Qu'est-ce qui a bloqué : "
-            "trop long, mauvais moment, ou pas envie ?"
-        ),
-        "widget": None,
-        "suggestions": ["Trop long", "Mauvais moment", "Pas envie"],
-        "engine": "local",
-    }
+
+    # Le report est enregistré comme un vrai « pas fait » côté programme, pas
+    # seulement comme un statut d'affichage dans le fil. Sans ça, l'assiduité ne
+    # voyait jamais les refus : ils vivaient dans `thread_items` et le calcul lit
+    # `activity_logs`.
+    _log_skip(user["id"], item["widget_type"] if item else None)
+
+    # Trois raisons proposées, et l'étape suivante derrière : reporter quelque chose
+    # ne doit pas fermer la journée. C'est le sens même du mot « reporté ».
+    follow_up = _chain_next(
+        user,
+        {
+            "reply": (
+                "Noté comme non fait, sans jugement — c'est une donnée utile. Qu'est-ce qui a "
+                "bloqué : trop long, mauvais moment, ou pas envie ?"
+            ),
+            "widget": None,
+            "suggestions": ["Trop long", "Mauvais moment", "Pas envie"],
+            "engine": "local",
+        },
+        item["widget_type"] if item else None,
+    )
     items, retired = _items_from_decision(user["id"], follow_up)
     return {"items": [*frozen, *items], "retired": retired}
 
@@ -1182,7 +1356,6 @@ async def _comment_on_checkin(user: dict[str, Any], row: dict[str, Any]) -> dict
     trend = by_id.get("tendance_anxiete", {})
     effect = by_id.get("effet_mesure_activites", {})
 
-    suggestions = ["Mes chiffres", "Respirer 5 min"]
     if sleep.get("value") is not None and sleep["value"] <= -0.4:
         bits.append(
             f"Sur tes {sleep['n']} nuits enregistrées, tes nuits courtes sont suivies d'une "
@@ -1207,10 +1380,13 @@ async def _comment_on_checkin(user: dict[str, Any], row: dict[str, Any]) -> dict
             "6 paires de jours minimum par signal."
         )
 
+    # `_chain_next` remplit les propositions à partir de l'état du jour : au premier
+    # jour « Mes chiffres » ouvrirait une courbe de deux points, et « Respirer 5 min »
+    # était proposé même quand la séance du jour était déjà faite.
     return {
         "reply": " ".join(bits),
         "widget": None,
-        "suggestions": suggestions,
+        "suggestions": [],
         "engine": "local",
     }
 
@@ -1510,7 +1686,7 @@ async def _submit_analysis(
         {
             "reply": body,
             "widget": None,
-            "suggestions": ["Voir les sources", "Mes chiffres"],
+            "suggestions": [],
             "citations": result["citations"],
             "engine": result["engine"],
         },
@@ -1961,10 +2137,14 @@ async def _submit_matin(
         bits.append(f"Anxiété **{values['anxiety_0_10']}/10** là, maintenant.")
     if intention:
         bits.append(f"Et l'intention du jour : {intention}.")
+    # Suggestions laissées vides : `_chain_next` les calcule sur l'état réel. La liste
+    # écrite ici proposait « Comment je me sens là » juste après un écran dont le
+    # champ `anxiety_0_10` est exactement ça — on proposait de refaire ce qui venait
+    # d'être fait.
     return dict(row), {
         "reply": " ".join(bits) or "Noté.",
         "widget": None,
-        "suggestions": ["Comment je me sens là", "Respirer 5 min", "Mes chiffres"],
+        "suggestions": [],
         "engine": "local",
     }
 
@@ -2283,14 +2463,51 @@ async def _submit_onboarding(
             "préalable de tout le reste : des symptômes physiques méritent d'être vus "
             "une fois par un médecin avant d'être traités comme de l'anxiété."
         )
-    bits.append("On commence demain matin. Rien d'autre à faire aujourd'hui.")
+    # Ce qui était écrit ici : « On commence demain matin. Rien d'autre à faire
+    # aujourd'hui. » C'était faux, et c'était le pire moment pour l'être — le
+    # questionnaire venait d'être rempli, l'attention est à son maximum, et on
+    # renvoyait la personne à demain. Le socle du jour est intégralement vide à cet
+    # instant. `_chain_next` enchaîne donc sur la vraie étape suivante, et les
+    # propositions sont calculées au lieu d'être devinées.
+    bits.append("Le programme est calé sur ce que tu viens de répondre. On commence tout de suite.")
 
     return entry, {
         "reply": " ".join(bits),
         "widget": None,
-        "suggestions": ["Mes chiffres", "Comment je me sens là"],
+        "suggestions": [],
         "engine": "local",
     }
+
+
+def _log_skip(user_id: str, widget_type: str | None) -> None:
+    """Un report dans le fil devient un « pas fait » dans le journal des activités.
+
+    Les deux registres existaient déjà mais ne se parlaient pas : « Pas maintenant »
+    marquait `reporte` sur `thread_items`, et l'assiduité se calcule sur
+    `activity_logs`. Les refus étaient donc invisibles pour tous les signaux — y
+    compris pour `activites_non_faites`, dont c'est pourtant l'unique objet.
+
+    On ne rétrograde que ce qui était encore `propose` aujourd'hui : reporter un
+    widget ouvert à la main n'efface pas une activité déjà faite ce matin.
+    """
+    if not widget_type:
+        return
+    slugs = [slug for slug, widget in program.SLUG_WIDGETS.items() if widget == widget_type]
+    # `SLUG_WIDGETS` fait pointer le check-in quotidien sur le formulaire du soir, qui
+    # porte la journée. Refuser celui du matin est pourtant le même refus, et sans
+    # cette ligne il ne laissait aucune trace : la table n'a qu'un slug pour les deux.
+    if widget_type in {"matin", "checkin"} and "checkin-quotidien" not in slugs:
+        slugs.append("checkin-quotidien")
+    if not slugs:
+        return
+    db.execute(
+        """
+        UPDATE activity_logs SET status = 'reporte'
+        WHERE user_id = %s AND entry_date = %s AND status = 'propose'
+          AND activity_slug = ANY(%s)
+        """,
+        (user_id, dt.date.today(), slugs),
+    )
 
 
 def _log_activity(user_id: str, slug: str, day: dt.date) -> None:

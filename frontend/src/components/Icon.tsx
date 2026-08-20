@@ -20,6 +20,11 @@ const PATHS: Record<string, string> = {
   report: 'M4 2h12v16H4zM7 6h6M7 9h6M7 12h4M7 15h2',
   account: 'M4 3h12v14H4zM7 8h6M7 12h4',
   logout: 'M8 3H3v14h5M12 6l4 4-4 4M8 10h8',
+  // Ajoutées avec le lanceur à deux niveaux : revenir en arrière depuis un
+  // sous-menu, et les deux têtes de groupe.
+  back: 'M17 10H3M8 5l-5 5 5 5',
+  pratique: 'M3 3h14v14H3zM8 7l5 3-5 3z',
+  noter: 'M3 3h14v14H3zM7 7h6M7 10h6M7 13h3',
 }
 
 export default function Icon({ name, size = 20 }: { name: string; size?: number }) {

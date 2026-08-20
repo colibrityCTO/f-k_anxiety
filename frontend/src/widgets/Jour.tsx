@@ -62,7 +62,23 @@ export default function Jour({ busy, onOpen }: WidgetProps) {
   if (error) return <div className="w-body"><p className="error-text">{error}</p></div>
   if (!day) return <div className="w-body"><p className="dim">Chargement…</p></div>
 
-  const done = day.items.filter((i) => i.status === 'fait' || i.status === 'partiel').length
+  /**
+   * Deux comptes, et pas un seul, parce qu'un seul mentait.
+   *
+   * Ce widget affichait `fait / total` sur les cinq à huit items du jour tout en
+   * écrivant, dans son propre panneau de preuves, qu'un seul était attendu. Quelqu'un
+   * qui avait fait exactement ce qu'on lui demandait lisait donc « 1/7 » : la barre
+   * annonçait un échec pendant que le contrat annonçait une réussite.
+   *
+   * Le socle porte le contrat — c'est lui, et lui seul, qu'on retrouve dans la barre
+   * du haut. Ce qui est fait au-delà est compté à part, comme un supplément, jamais
+   * comme un dû.
+   */
+  const isDone = (item: ProgramDay['items'][number]) =>
+    item.status === 'fait' || item.status === 'partiel'
+  const socle = day.items.filter((i) => i.slot === 'socle')
+  const socleDone = socle.filter(isDone).length
+  const extra = day.items.filter((i) => i.slot !== 'socle' && isDone(i)).length
 
   return (
     <div className="w-body">
@@ -71,10 +87,14 @@ export default function Jour({ busy, onOpen }: WidgetProps) {
       </p>
       <div className="sum">
         <div>
-          <span>Fait aujourd'hui</span>
+          <span>Le socle</span>
           <b>
-            {done}/{day.items.length}
+            {socleDone}/{socle.length}
           </b>
+        </div>
+        <div>
+          <span>En plus</span>
+          <b>{extra}</b>
         </div>
         <div>
           <span>Jours d'affilée</span>
@@ -87,6 +107,9 @@ export default function Jour({ busy, onOpen }: WidgetProps) {
           <span>Jours pratiqués</span>
           <b>{day.jours_pratiques}</b>
         </div>
+        {/* Chiffre enfin honnête : le dénominateur contient désormais les activités
+            proposées et non faites. Il valait 100 % en permanence, parce que seules
+            les réussites étaient enregistrées. */}
         <div>
           <span>Assiduité 7 j</span>
           <b>{Math.round(day.adherence_7j * 100)} %</b>
@@ -196,7 +219,10 @@ export default function Jour({ busy, onOpen }: WidgetProps) {
         ]}
         data={[
           { label: 'Progression', value: `semaine ${day.week} sur 12` },
-          { label: 'Un seul item attendu', value: 'le check-in — le reste est optionnel' },
+          {
+            label: 'Ce qui est attendu',
+            value: `le socle (${socle.length} lignes) — le reste est proposé, jamais dû`,
+          },
         ]}
         contraindications="Ce n'est pas une liste à cocher, et il n'y a pas de série à préserver. Trois minutes tenues valent mieux qu'une heure prévue et non faite : une activité non faite est une donnée sur le format, pas un échec."
       />

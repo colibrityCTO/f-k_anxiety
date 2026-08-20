@@ -1,34 +1,63 @@
 import { useState } from 'react'
 import Icon from './Icon'
-import type { DayState, WidgetType } from '../lib/types'
+import type { DayState, LaunchType } from '../lib/types'
 
 /**
- * Le lanceur. Le fil est le seul écran : tout part d'ici.
+ * Le lanceur, à deux niveaux.
  *
- * `matin`, `soir` et `maintenant` remplacent le check-in unique. Les trois sont
- * dans la grille, et pas seulement proposés : « Là, maintenant » n'est *jamais*
- * poussé par l'application — c'est sa seule porte d'entrée, et c'est voulu.
+ * Il en avait seize à plat, et la grille contredisait le serveur sur deux points.
+ * « Ce matin », « Ce soir » et « Là, maintenant » y étaient côte à côte, ce qui
+ * laissait ouvrir le formulaire du soir à dix heures — alors que le serveur
+ * l'interdit, et pour une raison qui tient : à midi la journée n'est pas finie, la
+ * faire résumer produit un chiffre faux, et corriger ce chiffre ensuite apprend que
+ * les saisies ne comptent pas. Rien n'empêchait non plus de redemander une nuit
+ * déjà notée. **Noter** remplace les trois : le serveur résout la demande en matin,
+ * soir ou mesure instantanée selon l'heure et selon ce qui manque encore.
+ *
+ * Le reste se range en deux groupes. **Pratiquer** est ce qui se fait — le second
+ * niveau est la porte d'entrée manuelle vers les exercices ; le programme du jour,
+ * lui, en propose déjà un dans le fil avec sa justification chiffrée. **Mes
+ * données** est ce qui se lit, jamais urgent, et qui occupait la moitié de l'écran
+ * de lancement.
  */
-const TILES: { type: WidgetType; name: string; icon: string }[] = [
+type Tile = { type: LaunchType; name: string; icon: string }
+type Group = { key: 'pratiquer' | 'donnees'; name: string; icon: string; note: string; tiles: Tile[] }
+
+const DIRECT: Tile[] = [
   { type: 'jour', name: 'Mon parcours', icon: 'checkin' },
-  { type: 'maintenant', name: 'Là, maintenant', icon: 'checkin' },
-  { type: 'matin', name: 'Ce matin', icon: 'checkin' },
-  { type: 'soir', name: 'Ce soir', icon: 'checkin' },
-  { type: 'breath', name: 'Respirer', icon: 'breath' },
-  { type: 'journal', name: 'Journal', icon: 'journal' },
-  { type: 'exposition', name: 'Exposition', icon: 'expo' },
-  { type: 'interoceptif', name: 'Sensations', icon: 'sensations' },
-  { type: 'meditation', name: 'Méditation', icon: 'meditation' },
-  { type: 'echelles', name: 'Échelles', icon: 'scale' },
-  { type: 'prevision', name: 'Demain', icon: 'analysis' },
-  { type: 'stats', name: 'Mes chiffres', icon: 'stats' },
-  { type: 'analysis', name: 'Analyse', icon: 'analysis' },
-  { type: 'memoire', name: 'Mémoire', icon: 'memory' },
-  { type: 'rapport', name: 'Rapport', icon: 'report' },
-  { type: 'sources', name: 'Sources', icon: 'sources' },
-  // `account` et `logout` ont quitté la grille : ils vivent dans la page Compte,
-  // atteignable en haut à droite. Leurs types restent acceptés côté serveur et
-  // dans `WidgetType`, parce que des items de ces types sont déjà dans les fils.
+  // `noter` n'est pas un type de widget : c'est une demande, résolue côté serveur.
+  { type: 'noter', name: 'Noter', icon: 'noter' },
+]
+
+const GROUPS: Group[] = [
+  {
+    key: 'pratiquer',
+    name: 'Pratiquer',
+    icon: 'pratique',
+    note: 'Les exercices, à lancer quand tu veux. Le programme t’en propose déjà un par jour, avec sa raison.',
+    tiles: [
+      { type: 'breath', name: 'Respirer', icon: 'breath' },
+      { type: 'meditation', name: 'Méditation', icon: 'meditation' },
+      { type: 'interoceptif', name: 'Sensations', icon: 'sensations' },
+      { type: 'exposition', name: 'Exposition', icon: 'expo' },
+      { type: 'journal', name: 'Journal', icon: 'journal' },
+      { type: 'echelles', name: 'Échelles', icon: 'scale' },
+    ],
+  },
+  {
+    key: 'donnees',
+    name: 'Mes données',
+    icon: 'stats',
+    note: 'Rien à remplir ici : ça se lit. Aucune de ces vues ne laisse de trace dans le fil.',
+    tiles: [
+      { type: 'stats', name: 'Mes chiffres', icon: 'stats' },
+      { type: 'analysis', name: 'Analyse', icon: 'analysis' },
+      { type: 'prevision', name: 'Demain', icon: 'analysis' },
+      { type: 'memoire', name: 'Mémoire', icon: 'memory' },
+      { type: 'rapport', name: 'Rapport', icon: 'report' },
+      { type: 'sources', name: 'Sources', icon: 'sources' },
+    ],
+  },
 ]
 
 export default function Composer({
@@ -41,20 +70,44 @@ export default function Composer({
   busy: boolean
   state: DayState | null
   onSend: (text: string) => void
-  onOpenWidget: (type: WidgetType, label?: string) => void
+  onOpenWidget: (type: LaunchType, label?: string) => void
   /** Ouvre le mode crise. Hors de la grille : en crise, un geste suffit. */
   onPanic: () => void
 }) {
   const [text, setText] = useState('')
   const [open, setOpen] = useState(false)
+  const [group, setGroup] = useState<Group | null>(null)
+
+  function close() {
+    setOpen(false)
+    setGroup(null)
+  }
 
   function send() {
     const value = text.trim()
     if (!value || busy) return
     setText('')
-    setOpen(false)
+    close()
     onSend(value)
   }
+
+  function launch(tile: Tile) {
+    close()
+    onOpenWidget(tile.type, tile.name)
+  }
+
+  /**
+   * Ce que « Noter » va ouvrir, en clair sous la tuile. Le serveur tranche seul,
+   * mais annoncer sa décision évite le seul reproche qu'on puisse faire à une
+   * entrée unique : ne pas savoir ce qu'on va obtenir en appuyant.
+   */
+  const noterHint = !state
+    ? null
+    : !state.matin_done
+      ? 'ta nuit'
+      : !state.soir_done && new Date().getHours() >= 17
+        ? 'ta journée'
+        : 'ton niveau, là'
 
   return (
     <div className="composer">
@@ -63,7 +116,7 @@ export default function Composer({
           className="iconbtn"
           aria-expanded={open}
           aria-label="Ouvrir les widgets"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => (open ? close() : setOpen(true))}
         >
           <Icon name={open ? 'close' : 'plus'} />
         </button>
@@ -89,26 +142,60 @@ export default function Composer({
 
       {open && (
         <div className="launcher">
-          <div className="tiles">
-            {TILES.map((tile) => (
-              <button
-                key={tile.type}
-                className="tile"
-                disabled={busy}
-                onClick={() => {
-                  setOpen(false)
-                  onOpenWidget(tile.type, tile.name)
-                }}
-              >
-                <Icon name={tile.icon} />
-                <span className="nm">{tile.name}</span>
+          {group ? (
+            <>
+              <button className="btn-sm launcher-back" onClick={() => setGroup(null)}>
+                <Icon name="back" size={14} /> {group.name}
               </button>
-            ))}
-          </div>
-          {state && (
+              <p className="tiny dim">{group.note}</p>
+              <div className="tiles">
+                {group.tiles.map((tile) => (
+                  <button
+                    key={tile.type}
+                    className="tile"
+                    disabled={busy}
+                    onClick={() => launch(tile)}
+                  >
+                    <Icon name={tile.icon} />
+                    <span className="nm">{tile.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="tiles">
+              {DIRECT.map((tile) => (
+                <button
+                  key={tile.type}
+                  className="tile"
+                  disabled={busy}
+                  onClick={() => launch(tile)}
+                >
+                  <Icon name={tile.icon} />
+                  <span className="nm">{tile.name}</span>
+                  {tile.type === 'noter' && noterHint && (
+                    <span className="tile-hint">{noterHint}</span>
+                  )}
+                </button>
+              ))}
+              {GROUPS.map((entry) => (
+                <button
+                  key={entry.key}
+                  className="tile tile-group"
+                  disabled={busy}
+                  onClick={() => setGroup(entry)}
+                >
+                  <Icon name={entry.icon} />
+                  <span className="nm">{entry.name}</span>
+                  <span className="tile-hint">{entry.tiles.length} ›</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {state && !group && (
             <p className="tiny dim" style={{ marginTop: 'var(--g2)', marginBottom: 0 }}>
               Semaine {state.week} · module {state.module} — {state.module_title}
-              {state.streak > 0 ? ` · ${state.streak} jour(s) d'affilée` : ''}
               {state.gad7_last !== null ? ` · GAD-7 ${state.gad7_last}` : ''}
               {state.mesures_instantanees > 0
                 ? ` · ${state.mesures_instantanees} mesure(s) aujourd'hui`

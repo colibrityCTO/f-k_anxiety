@@ -481,12 +481,24 @@ def compute(
         )
 
     # --- Activités faites / non faites --------------------------------------
+    #
+    # Le statut `propose` est écrit par `build_day` au moment où l'activité est
+    # calculée : c'est lui qui donne enfin un dénominateur à l'assiduité. Avant, seuls
+    # des `fait` étaient écrits, donc la part « réalisées / proposées » valait 1.0 quoi
+    # qu'il arrive — un chiffre faux, affiché avec l'autorité d'un chiffre calculé.
+    #
+    # Exception : les items encore `propose` **du jour en cours** ne comptent nulle
+    # part. La journée n'est pas finie ; les traiter en non faits ferait plonger
+    # l'assiduité chaque matin pour la faire remonter le soir, et aucun de ces deux
+    # chiffres ne dirait quoi que ce soit.
     done: dict[str, int] = {}
     not_done: dict[str, int] = {}
     skip_reasons: list[dict[str, Any]] = []
     effect_pairs: dict[str, list[tuple[int, int]]] = {}
     for log in logs:
         slug = log["activity_slug"]
+        if log["status"] == "propose" and log["entry_date"] == end:
+            continue
         if log["status"] in {"fait", "partiel"}:
             done[slug] = done.get(slug, 0) + 1
             if log["anxiety_before"] is not None and log["anxiety_after"] is not None:
@@ -520,7 +532,10 @@ def compute(
                 if adherence >= 0.4
                 else "faible"
             ),
-            "method": "(fait + partiel) / total des activités tracées sur la période",
+            "method": (
+                "(fait + partiel) / total des activités proposées sur la période — les "
+                "activités du jour en cours encore en attente sont exclues du calcul"
+            ),
             "observations": [
                 {"activite": slug, "fait": done.get(slug, 0), "pas_fait": not_done.get(slug, 0)}
                 for slug in sorted(set(done) | set(not_done))
@@ -535,7 +550,10 @@ def compute(
             "label": "Activités les plus souvent non faites, et raisons données",
             "value": sorted(not_done.items(), key=lambda kv: -kv[1])[:5],
             "verdict": "à examiner" if not_done else "rien à signaler",
-            "method": "comptage des statuts « pas_fait » et « reporte », avec les raisons saisies",
+            "method": (
+                "comptage des statuts « propose » restés en attente, « pas_fait » et "
+                "« reporte », avec les raisons saisies quand il y en a"
+            ),
             "observations": skip_reasons[:20],
             "n": sum(not_done.values()),
         }

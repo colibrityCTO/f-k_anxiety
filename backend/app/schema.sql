@@ -474,7 +474,10 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     activity_slug  text NOT NULL REFERENCES activities(slug) ON DELETE CASCADE,
     entry_date     date NOT NULL DEFAULT CURRENT_DATE,
-    status         text NOT NULL,   -- fait | partiel | pas_fait | reporte
+    -- propose : calculé par build_day et pas encore fait. C'est lui qui donne un
+    -- dénominateur à l'assiduité — sans lui, seuls des « fait » étaient écrits et
+    -- la part des activités réalisées valait 1.0 en permanence.
+    status         text NOT NULL,   -- propose | fait | partiel | pas_fait | reporte
     duration_min   integer,
     anxiety_before integer CHECK (anxiety_before BETWEEN 0 AND 10),
     anxiety_after  integer CHECK (anxiety_after BETWEEN 0 AND 10),

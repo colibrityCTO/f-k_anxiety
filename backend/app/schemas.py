@@ -176,6 +176,10 @@ class ActivityLogOut(ActivityLogIn):
     id: str
     entry_date: dt.date
     created_at: dt.datetime | None = None
+    # En lecture seulement. `propose` est posé par le serveur quand `build_day`
+    # calcule le programme du jour ; il reste absent de `ActivityLogIn`, sans quoi un
+    # client pourrait se déclarer « proposé » et fausser sa propre assiduité.
+    status: Literal["propose", "fait", "partiel", "pas_fait", "reporte"]
 
 
 # --- Échelles ---------------------------------------------------------------
@@ -237,7 +241,10 @@ class ProgramItem(BaseModel):
     # Le « pourquoi pour vous » : la raison personnalisée, avec ses données.
     why_for_you: str
     triggered_by: list[dict[str, Any]] = Field(default_factory=list)
-    status: Literal["fait", "partiel", "pas_fait", "reporte"] | None = None
+    # `propose` : calculé par `build_day` et pas encore fait. C'est ce statut qui donne
+    # un dénominateur à l'assiduité — sans lui, seuls des « fait » étaient enregistrés
+    # et la part des activités réalisées valait 100 % en permanence.
+    status: Literal["propose", "fait", "partiel", "pas_fait", "reporte"] | None = None
     log: ActivityLogOut | None = None
 
 

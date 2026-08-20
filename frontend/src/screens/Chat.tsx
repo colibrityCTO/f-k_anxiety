@@ -1,13 +1,14 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AccountLink from '../components/AccountLink'
 import Composer from '../components/Composer'
+import DayProgress from '../components/DayProgress'
 import Markdown from '../components/Markdown'
 import Message from '../components/Message'
 import WidgetHost from '../components/WidgetHost'
 import { api, sendStream } from '../lib/api'
 import { cacheContext, flushQueue, loadContext } from '../lib/panic'
 import { loadReminder, scheduleReminder } from '../lib/reminder'
-import type { DayState, PanicContext, ThreadItem, WidgetType } from '../lib/types'
+import type { DayState, LaunchType, PanicContext, ThreadItem } from '../lib/types'
 import { useAuth } from '../state/AuthContext'
 import Compte from './Compte'
 import QuickChill from './QuickChill'
@@ -323,7 +324,7 @@ export default function Chat() {
   )
 
   const openWidget = useCallback(
-    (type: WidgetType, label?: string) => run(() => api.openWidget(type, label)),
+    (type: LaunchType, label?: string) => run(() => api.openWidget(type, label)),
     [run],
   )
   const submit = useCallback(
@@ -338,6 +339,10 @@ export default function Chat() {
     <div className="app">
       <header className="topbar">
         <div className="wordmark">Fuck&nbsp;Anxiety</div>
+        {/* Le contrat du jour vit ici et pas dans le lanceur : l'état d'avancement
+            était affiché à l'intérieur du menu « + », donc caché derrière un geste.
+            Un objectif qu'il faut ouvrir un menu pour consulter n'en est pas un. */}
+        <DayProgress state={state} busy={busy} onOpen={openWidget} />
         <AccountLink attention={accountAttention(user)} onOpen={() => setCompteOpen(true)} />
       </header>
 
