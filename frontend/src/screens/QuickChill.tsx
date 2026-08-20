@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icon from '../components/Icon'
+import Steps from '../components/Steps'
 import Slider from '../components/Slider'
 import WhyBox from '../components/WhyBox'
 import { sendOrQueue } from '../lib/panic'
@@ -29,6 +30,22 @@ import type { PanicContext, PanicTool } from '../lib/types'
  */
 
 type Step = 'remarquer' | 'nommer' | 'outil' | 'bilan' | 'fini'
+
+/**
+ * Les quatre temps de la séquence, pour la barre de progression. `fini` en est
+ * exclu : ce n'est pas une étape mais l'après, et compter l'écran de sortie
+ * ferait afficher « 4 sur 5 » à quelqu'un qui a tout terminé.
+ *
+ * Voir la fin est ce qui compte le plus ici, plus encore qu'ailleurs : en pleine
+ * crise, une séquence dont on ne sait pas où elle s'arrête est une raison de ne
+ * pas la commencer.
+ */
+const ETAPES: { step: Step; title: string }[] = [
+  { step: 'remarquer', title: 'Remarquer' },
+  { step: 'nommer', title: 'Nommer' },
+  { step: 'outil', title: 'Un outil' },
+  { step: 'bilan', title: 'Noter' },
+]
 
 const ORDER: PanicTool['step'][] = ['respirer', 'ancrer', 'froid', 'jeu']
 
@@ -131,6 +148,13 @@ export default function QuickChill({
       </div>
 
       <div className="qc-body">
+        {step !== 'fini' && (
+          <Steps
+            index={Math.max(0, ETAPES.findIndex((e) => e.step === step))}
+            titles={ETAPES.map((e) => e.title)}
+          />
+        )}
+
         {step === 'remarquer' && (
           <>
             <p className="qc-framing">{context.cadrage}</p>

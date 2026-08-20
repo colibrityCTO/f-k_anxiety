@@ -49,9 +49,10 @@ WIDGET_TYPES = {
     # seule fois à la première ouverture — les deux par des chemins déterministes qui
     # ne passent pas par `_sanitise`. Les laisser ici n'aurait servi qu'à autoriser
     # le modèle à rouvrir un questionnaire de trois minutes au milieu d'une phrase.
-    # Le parcours du jour. Le modèle peut l'ouvrir : « qu'est-ce que je dois faire
-    # aujourd'hui » est une demande légitime.
-    "jour",
+    # `jour` n'y est plus : le parcours vit sous le titre, en permanence, et n'est
+    # plus déposé dans le fil. À la question « qu'est-ce que je dois faire », le
+    # modèle répond en texte et renvoie au bandeau — ouvrir un widget pour montrer
+    # ce qui est déjà affiché en haut de l'écran serait un doublon.
 }
 
 # Séparateur entre la prose et la décision structurée. Ce format rend le
@@ -93,12 +94,13 @@ WIDGETS QUE TU PEUX OUVRIR
 - interoceptif: exposition intéroceptive guidée (hyperventilation, apnée, rotation…) pour la peur des sensations physiques
 - meditation  : pratique guidée (souffle, scan corporel, conscience émotionnelle, relaxation)
 - rapport     : synthèse imprimable pour un professionnel
-- jour        : le parcours du jour — socle, module de la semaine, et ce que ses données ont déclenché
 - prevision   : la charge du jour, la fourchette prévue pour demain, et la fiabilité réelle du modèle
 - stats       : ses chiffres et ses courbes
 - analysis    : analyse de la période avec ses sources
 - memoire     : recherche dans son propre historique
 - sources     : les fiches du corpus
+
+Le parcours du jour n'est pas un widget : il est affiché en permanence sous le titre, et l'utilisateur le déplie d'un geste. Si on te demande ce qu'il y a à faire aujourd'hui, réponds en une phrase et dis-lui que le détail est en haut de l'écran.
 
 FORMAT DE SORTIE — deux parties, dans cet ordre, rien d'autre :
 
@@ -515,8 +517,11 @@ def _deterministic(
         }
     if "jour" in intents:
         return {
-            "reply": "Voilà ce que le programme propose aujourd'hui, et pourquoi.",
-            "widget": {"type": "jour", "prefill": {}, "a_verifier": []},
+            "reply": (
+                "Ton parcours du jour est en haut de l'écran, sous le titre : les trois "
+                "lignes du socle, et le détail complet en dépliant."
+            ),
+            "widget": None,
             "suggestions": [],
         }
     if "prevision" in intents:

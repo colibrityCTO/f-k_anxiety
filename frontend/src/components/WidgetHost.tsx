@@ -1,5 +1,5 @@
 import Icon from './Icon'
-import type { ThreadItem, WidgetType } from '../lib/types'
+import type { LaunchType, ThreadItem, WidgetType } from '../lib/types'
 import Account from '../widgets/Account'
 import Analysis from '../widgets/Analysis'
 import Breath from '../widgets/Breath'
@@ -28,11 +28,12 @@ export type WidgetProps = {
   onSubmit: (values: Record<string, unknown>) => Promise<void> | void
   onSkip: () => Promise<void> | void
   /**
-   * Ouvrir un autre widget depuis celui-ci. Optionnel parce qu'un seul en a besoin —
-   * le parcours du jour, dont chaque ligne mène à l'exercice correspondant. Sans lui,
-   * le parcours serait une liste à lire et rien d'autre.
+   * Ouvrir autre chose depuis ce widget. `LaunchType` et non `WidgetType` : la
+   * demande peut être `noter`, que le serveur résout en matin, soir ou mesure
+   * instantanée selon l'heure — l'écran n'a pas à le savoir, et c'est justement ce
+   * qui l'empêche d'ouvrir le formulaire du soir à dix heures.
    */
-  onOpen?: (type: WidgetType, label?: string) => void
+  onOpen?: (type: LaunchType, label?: string) => void
 }
 
 const META: Record<WidgetType, { title: string; tag: string }> = {
@@ -183,7 +184,7 @@ export default function WidgetHost({
   open,
   onToggle,
 }: WidgetProps & {
-  onOpen: (type: WidgetType, label?: string) => void
+  onOpen: (type: LaunchType, label?: string) => void
   open: boolean
   onToggle: () => void
 }) {

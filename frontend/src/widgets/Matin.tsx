@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Slider from '../components/Slider'
+import Steps from '../components/Steps'
 import Stepper from '../components/Stepper'
 import WhyBox from '../components/WhyBox'
 import type { WidgetProps } from '../components/WidgetHost'
@@ -20,6 +21,14 @@ const NOTE = 'Déduit de ta phrase — vérifie.'
  * avec le nombre de moments. Deux écrans courts tenus tous les jours valent mieux
  * qu'un formulaire complet rempli deux fois par semaine.
  */
+/**
+ * Trois écrans, jamais empilés : la nuit qui vient de passer, l'état de l'instant,
+ * puis la phrase du jour. Ce sont trois questions de nature différente — un
+ * souvenir, une mesure, une intention — et les présenter d'un bloc les faisait
+ * remplir du même geste, à la même vitesse.
+ */
+const ETAPES = ['La nuit', 'Là, maintenant', 'Aujourd’hui']
+
 export default function Matin({ item, busy, onSubmit, onSkip }: WidgetProps) {
   const prefill = (item.payload?.prefill ?? {}) as Record<string, number | string | string[]>
   const check = new Set(item.payload?.a_verifier ?? [])
@@ -38,10 +47,16 @@ export default function Matin({ item, busy, onSubmit, onSkip }: WidgetProps) {
   // retiré), et une donnée de santé fausse est pire qu'une donnée absente.
   const fromSensor = derived.has('sleep_hours')
   const [correcting, setCorrecting] = useState(false)
+  const [etape, setEtape] = useState(0)
+  const dernier = etape === ETAPES.length - 1
 
   return (
     <>
       <div className="w-body">
+        <Steps index={etape} titles={ETAPES} onGo={setEtape} />
+
+        {etape === 0 && (
+          <>
         {fromSensor && !correcting ? (
           <div className="field">
             <label style={{ marginBottom: 0 }}>
@@ -76,6 +91,10 @@ export default function Matin({ item, busy, onSubmit, onSkip }: WidgetProps) {
           note={check.has('sleep_quality_0_10') ? NOTE : undefined}
         />
 
+          </>
+        )}
+
+        {etape === 1 && (
         <Slider
           label="Comment tu te sens là"
           value={anxiety}
@@ -84,9 +103,13 @@ export default function Matin({ item, busy, onSubmit, onSkip }: WidgetProps) {
           highLabel="au maximum"
           note={check.has('anxiety_0_10') ? NOTE : undefined}
         />
+        )}
 
         {/* Les deux trous d'une seule phrase. Le second est le plus utile : il
-            engage une action *malgré* l'anxiété, au lieu d'attendre qu'elle passe. */}
+            engage une action *malgré* l'anxiété, au lieu d'attendre qu'elle passe.
+            Ils tiennent ensemble sur une étape : les séparer casserait la phrase. */}
+        {etape === 2 && (
+          <>
         <div className="field">
           <label htmlFor="matin-peur">
             Aujourd'hui j'ai peur de…<span className="hint">Une ligne suffit</span>
@@ -110,6 +133,8 @@ export default function Matin({ item, busy, onSubmit, onSkip }: WidgetProps) {
             onChange={(event) => setIntention(event.target.value)}
           />
         </div>
+          </>
+        )}
 
         <WhyBox
           mechanism="Le sommeil se note au réveil parce que le rappel se dégrade vite : dès que l'agenda n'est pas rempli le matin, l'estimation devient approximative, et son biais n'est pas constant — les nuits courtes sont surestimées, les longues sous-estimées. Une valeur fausse ici fausse toute la corrélation sommeil → anxiété du lendemain. La seconde phrase relève d'une autre logique : nommer une action à faire malgré l'anxiété, plutôt qu'attendre sa disparition."
@@ -134,6 +159,16 @@ export default function Matin({ item, busy, onSubmit, onSkip }: WidgetProps) {
       </div>
 
       <div className="w-foot">
+        {etape > 0 && (
+          <button className="btn-sm" disabled={busy} onClick={() => setEtape(etape - 1)}>
+            Retour
+          </button>
+        )}
+        {!dernier ? (
+          <button className="btn-primary" onClick={() => setEtape(etape + 1)}>
+            Suivant
+          </button>
+        ) : (
         <button
           className="btn-primary"
           disabled={busy}
@@ -152,6 +187,7 @@ export default function Matin({ item, busy, onSubmit, onSkip }: WidgetProps) {
         >
           Valider
         </button>
+        )}
         <button className="btn-sm" disabled={busy} onClick={onSkip}>
           Pas maintenant
         </button>

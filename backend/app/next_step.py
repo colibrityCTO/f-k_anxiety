@@ -510,7 +510,17 @@ def suggestions_for(
     if state.get("jours_notes", 0) >= 10:
         add("Mes chiffres", "stats")
 
-    add("Mon parcours", "jour")
+    # Aucun repli inconditionnel, et la liste peut donc être vide.
+    #
+    # « Mon parcours » tenait ce rôle, mais il n'ouvre plus rien : le programme du
+    # jour est affiché en permanence sous le titre, et le proposer comme action
+    # renverrait vers ce qui est déjà à l'écran. La tentation était d'y mettre
+    # « Respirer 5 min » à la place — c'est exactement le bruit qu'on venait de
+    # supprimer, puisque la séance du jour peut être faite.
+    #
+    # Une liste vide n'est plus un cul-de-sac depuis que le classeur accompagne
+    # chaque message d'un widget : la suite est là, elle est juste ouverte au lieu
+    # d'être proposée. Mieux vaut ne rien suggérer que suggérer à côté.
     return out
 
 

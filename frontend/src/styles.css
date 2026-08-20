@@ -982,21 +982,120 @@ th {
   stroke-width: 2.5;
 }
 
-/* --- Le contrat du jour, en haut --------------------------------------- */
+/* --- Progression d'un formulaire en plusieurs étapes -------------------- */
+
+.steps {
+  margin-bottom: var(--g2);
+}
+.steps-bar {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+/* Chaque segment prend la même part de la largeur : la progression se lit à la
+   proportion d'encre, pas à la taille des blocs. */
+.steps-seg {
+  flex: 1 1 0;
+  height: 10px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  background: transparent;
+  opacity: 0.3;
+  cursor: default;
+}
+.steps-seg.is-done {
+  background: var(--ink);
+  opacity: 1;
+}
+/* L'étape en cours : pleine hauteur de trait, pas encore remplie. Elle se
+   distingue donc des deux autres états sans introduire de troisième couleur. */
+.steps-seg.is-current {
+  opacity: 1;
+  border-width: 4px;
+}
+.steps-seg:not(:disabled) {
+  cursor: pointer;
+}
+.steps-label {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin: 0;
+}
+
+/* --- Le parcours du jour : bandeau permanent sous le titre -------------- */
+
+.parcours {
+  flex: 0 0 auto;
+  border-bottom: var(--b) solid var(--ink);
+  padding: 10px var(--g3) 12px;
+}
+/* Déplié, le panneau peut être long : il défile sur lui-même plutôt que de pousser
+   le fil hors de l'écran. */
+.parcours.is-open {
+  max-height: 64dvh;
+  overflow-y: auto;
+}
+.parcours-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--g2);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.parcours-title {
+  font-family: var(--display);
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+.parcours-date {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  flex: 1 1 auto;
+}
+.parcours-count {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+.parcours-chev {
+  display: inline-flex;
+}
+.parcours-chev svg {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.5;
+}
+.parcours-cells {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+.parcours-body {
+  margin-top: var(--g2);
+  padding-top: var(--g2);
+  border-top: var(--b) solid var(--ink);
+}
+
+/* --- Les cases du socle -------------------------------------------------- */
 
 /* Trois cases, cliquables, et un compte. Volontairement muet quand tout est fait :
    tenir le socle est la normale, pas une performance à saluer. */
-.dayprog {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-.dayprog-cells {
-  display: flex;
-  gap: 4px;
-}
 .dayprog-cell {
   border: 2px solid currentColor;
   padding: 3px 7px;

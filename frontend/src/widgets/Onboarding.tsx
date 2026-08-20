@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Stepper from '../components/Stepper'
+import Steps from '../components/Steps'
 import WhyBox from '../components/WhyBox'
 import type { WidgetProps } from '../components/WidgetHost'
 import { api } from '../lib/api'
@@ -158,9 +159,10 @@ export default function Onboarding({ busy, onSubmit }: WidgetProps) {
   return (
     <>
       <div className="w-body">
-        <p className="tiny dim">
-          Étape {step + 1} sur {STEPS.length} — {current.title}
-        </p>
+        {/* La barre remplace le compteur en texte : « étape 3 sur 8 » se lit, mais
+            ne se voit pas. Sur un questionnaire de trois minutes annoncé comme tel,
+            voir la part déjà faite est ce qui fait finir la huitième. */}
+        <Steps index={step} titles={STEPS.map((s) => s.title)} onGo={setStep} />
 
         {current.key === 'objectif' && (
           <div className="field">

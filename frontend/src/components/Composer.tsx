@@ -14,6 +14,9 @@ import type { DayState, LaunchType } from '../lib/types'
  * déjà notée. **Noter** remplace les trois : le serveur résout la demande en matin,
  * soir ou mesure instantanée selon l'heure et selon ce qui manque encore.
  *
+ * « Mon parcours » n'y est plus non plus : il est sous le titre, déplié d'un geste,
+ * parce que c'est l'état du jour et pas un événement à déposer dans un fil.
+ *
  * Le reste se range en deux groupes. **Pratiquer** est ce qui se fait — le second
  * niveau est la porte d'entrée manuelle vers les exercices ; le programme du jour,
  * lui, en propose déjà un dans le fil avec sa justification chiffrée. **Mes
@@ -23,8 +26,9 @@ import type { DayState, LaunchType } from '../lib/types'
 type Tile = { type: LaunchType; name: string; icon: string }
 type Group = { key: 'pratiquer' | 'donnees'; name: string; icon: string; note: string; tiles: Tile[] }
 
+// « Mon parcours » a quitté la grille : il vit sous le titre, en permanence. Un
+// programme n'est pas quelque chose qu'on lance, c'est l'état du jour.
 const DIRECT: Tile[] = [
-  { type: 'jour', name: 'Mon parcours', icon: 'checkin' },
   // `noter` n'est pas un type de widget : c'est une demande, résolue côté serveur.
   { type: 'noter', name: 'Noter', icon: 'noter' },
 ]

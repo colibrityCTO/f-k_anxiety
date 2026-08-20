@@ -22,8 +22,8 @@ Deux façons d'entrer une donnée :
    dîner » → l'extraction déterministe lit `anxiété 8`, `sommeil 5 h`, `1 panique`,
    `évitement 7`, et le check-in arrive **pré-rempli** dans le fil. Rien n'est enregistré avant
    que tu valides.
-2. **Tu ouvres le widget toi-même** avec le +. Le lanceur a deux niveaux et quatre
-   entrées : **Mon parcours**, **Noter**, **Pratiquer** et **Mes données**. « Noter »
+2. **Tu ouvres le widget toi-même** avec le +. Le lanceur a deux niveaux et trois
+   entrées : **Noter**, **Pratiquer** et **Mes données**. « Noter »
    n'est pas un formulaire mais une demande — le serveur choisit le matin, le soir ou
    la mesure instantanée selon l'heure et selon ce qui manque déjà, ce qui rend
    impossible de résumer une journée qui n'est pas finie ou de saisir deux fois la
@@ -50,11 +50,23 @@ son check-in à 8 h fermait la journée jusqu'à 17 h — alors que vingt-huit a
 une trentaine de fiches attendaient. Un refus explicite fait exception : reporter une
 saisie ne la remet pas en avant dans la foulée, elle reste accessible par « Noter ».
 
-**Ce qui est attendu et ce qui est proposé sont deux choses.** La barre du haut ne
-compte que le socle — noter, respirer, écrire. Le programme propose cinq à huit items
-par jour, mais les afficher tous dans un compteur revenait à annoncer « 1/7 » à
-quelqu'un qui avait fait exactement ce qu'on lui demandait. Et il n'y a pas de série à
-préserver : un compteur qui se remet à zéro punit le jour où c'était le plus dur.
+**Ce qui est attendu et ce qui est proposé sont deux choses.** Le bandeau **Mon
+parcours**, sous le titre, porte la date et le socle du jour — noter, respirer, écrire
+— et se déplie sur le programme entier. Il ne compte que le socle : le programme
+propose cinq à huit items par jour, mais les afficher tous dans un compteur revenait à
+annoncer « 1/7 » à quelqu'un qui avait fait exactement ce qu'on lui demandait. Et il
+n'y a pas de série à préserver : un compteur qui se remet à zéro punit le jour où
+c'était le plus dur.
+
+Le parcours n'est pas un widget du fil, et c'est délibéré : un programme est l'état du
+jour, pas un événement. Déposé dans un fil chronologique il défilait avec le reste, et
+l'information la plus consultée devenait la plus difficile à retrouver.
+
+**Un formulaire long ne s'affiche jamais d'un bloc.** Les saisies en plusieurs temps —
+le matin, le soir, l'exposition intéroceptive, le questionnaire initial, la séquence de
+crise — montrent une étape à la fois, sous une barre segmentée qui dit combien il en
+reste. Une page longue est en elle-même un motif d'abandon ; et savoir où ça s'arrête
+est ce qui permet de commencer.
 
 ---
 

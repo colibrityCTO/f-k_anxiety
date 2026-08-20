@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AccountLink from '../components/AccountLink'
 import Composer from '../components/Composer'
-import DayProgress from '../components/DayProgress'
+import Parcours from '../components/Parcours'
 import Markdown from '../components/Markdown'
 import Message from '../components/Message'
 import WidgetHost from '../components/WidgetHost'
@@ -339,12 +339,14 @@ export default function Chat() {
     <div className="app">
       <header className="topbar">
         <div className="wordmark">Fuck&nbsp;Anxiety</div>
-        {/* Le contrat du jour vit ici et pas dans le lanceur : l'état d'avancement
-            était affiché à l'intérieur du menu « + », donc caché derrière un geste.
-            Un objectif qu'il faut ouvrir un menu pour consulter n'en est pas un. */}
-        <DayProgress state={state} busy={busy} onOpen={openWidget} />
         <AccountLink attention={accountAttention(user)} onOpen={() => setCompteOpen(true)} />
       </header>
+
+      {/* Sous le titre, en permanence, hors du fil : la date et le contrat du jour,
+          dépliables sur le programme entier. C'est l'état du jour, pas un événement —
+          le déposer dans un fil chronologique le faisait défiler avec le reste, et
+          l'information la plus consultée devenait la plus difficile à retrouver. */}
+      <Parcours state={state} busy={busy} onOpen={openWidget} />
 
       <div className="thread" ref={view}>
         {hasMore && (

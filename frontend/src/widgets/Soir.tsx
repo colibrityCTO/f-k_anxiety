@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Slider from '../components/Slider'
+import Steps from '../components/Steps'
 import Stepper from '../components/Stepper'
 import WhyBox from '../components/WhyBox'
 import type { WidgetProps } from '../components/WidgetHost'
@@ -20,6 +21,15 @@ const COMPUTED = 'Calculé sur tes mesures du jour — corrige si c’est faux.'
  * Le compteur de paniques passe en lecture seule dès qu'un épisode a été déclaré :
  * une crise se note au moment où elle arrive, pas douze heures plus tard.
  */
+/**
+ * Quatre écrans. Le formulaire du soir est le plus long de l'application — quatre
+ * curseurs, quatre compteurs, une date et deux phrases — et c'est celui qu'on
+ * remplit fatigué. Empilé, il se survolait : on tirait les curseurs à la même
+ * position sans les lire, ce qui produit des chiffres lisses et faux, et toutes les
+ * corrélations en dépendent.
+ */
+const ETAPES = ['La journée', 'Le corps', 'Les épisodes', 'En une phrase']
+
 export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
   const prefill = (item.payload?.prefill ?? {}) as Record<string, number | string | string[]>
   const check = new Set(item.payload?.a_verifier ?? [])
@@ -49,9 +59,16 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
   const noteFor = (key: string) =>
     derived.has(key) ? COMPUTED : check.has(key) ? NOTE : undefined
 
+  const [etape, setEtape] = useState(0)
+  const dernier = etape === ETAPES.length - 1
+
   return (
     <>
       <div className="w-body">
+        <Steps index={etape} titles={ETAPES} onGo={setEtape} />
+
+        {etape === 0 && (
+          <>
         <Slider
           label="Le pic de la journée"
           value={peak}
@@ -84,13 +101,19 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
           highLabel="total"
           note={noteFor('avoidance_0_10')}
         />
+          </>
+        )}
 
+        {etape === 1 && (
         <div className="pair">
           <Stepper label="Cafés" value={caffeine} onChange={setCaffeine} max={30} />
           <Stepper label="Verres" value={alcohol} onChange={setAlcohol} max={40} />
           <Stepper label="Sport (min)" value={exercise} onChange={setExercise} max={600} step={5} />
         </div>
+        )}
 
+        {etape === 2 && (
+          <>
         {panicDerived ? (
           <div className="field">
             <label style={{ marginBottom: 0 }}>
@@ -132,7 +155,11 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
             </button>
           )}
         </div>
+          </>
+        )}
 
+        {etape === 3 && (
+          <>
         <div className="field" style={{ marginBottom: 0 }}>
           <label htmlFor="soir-trigger">
             Le déclencheur, en une phrase<span className="hint">Facultatif</span>
@@ -164,6 +191,8 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
             onChange={(event) => setHeld(event.target.value)}
           />
         </div>
+          </>
+        )}
 
         <WhyBox
           mechanism="Deux chiffres et non un seul : sous anxiété, la mémoire retient les pires moments, donc une « moyenne » demandée de tête est en réalité un pic. Les séparer permet de savoir lequel bouge — un pic qui baisse et une moyenne stable ne veulent pas dire la même chose. Les régularités personnelles (sommeil → anxiété du lendemain, caféine → pics) ne sont visibles que sur ta propre série : aucune moyenne de population ne peut te les dire."
@@ -190,6 +219,16 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
       </div>
 
       <div className="w-foot">
+        {etape > 0 && (
+          <button className="btn-sm" disabled={busy} onClick={() => setEtape(etape - 1)}>
+            Retour
+          </button>
+        )}
+        {!dernier ? (
+          <button className="btn-primary" onClick={() => setEtape(etape + 1)}>
+            Suivant
+          </button>
+        ) : (
         <button
           className="btn-primary"
           disabled={busy}
@@ -213,6 +252,7 @@ export default function Soir({ item, busy, onSubmit, onSkip }: WidgetProps) {
         >
           Valider
         </button>
+        )}
         <button className="btn-sm" disabled={busy} onClick={onSkip}>
           Pas maintenant
         </button>
