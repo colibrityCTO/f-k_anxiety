@@ -340,6 +340,24 @@ with TestClient(app) as client:
         "événement, il n'y a rien à archiver",
     )
 
+    # Et la règle vaut pour **tous** les types, pas seulement le même : un seul
+    # formulaire ouvert dans tout le fil. En afficher trois donne surtout trois
+    # raisons de n'en remplir aucun ; le texte qui les accompagnait, lui, reste.
+    for kind in ("journal", "breath", "echelles"):
+        client.post("/chat/widget", headers=h, json={"type": kind, "label": kind})
+    tous = db.query_one(
+        """
+        SELECT count(*) AS n FROM thread_items
+        WHERE user_id = %s AND kind = 'widget' AND status = 'ouvert'
+        """,
+        (user_id,),
+    )
+    check(
+        "et il n'y a jamais qu'un seul formulaire ouvert, tous types confondus",
+        int(tous["n"]) == 1,
+        f"{tous['n']} formulaire(s) ouvert(s) après quatre types différents",
+    )
+
     # Et la contrepartie, qui est ce qui rend la règle acceptable : ce qui porte une
     # donnée ne bouge jamais. On valide, puis on rouvre.
     encore = client.post(

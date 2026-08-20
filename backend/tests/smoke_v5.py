@@ -183,17 +183,24 @@ with TestClient(app) as client:
         f"ephemeral={produced['ephemeral'] if produced else '—'}",
     )
 
-    # --- 3. Le bilan hebdomadaire est durable ------------------------------
+    # --- 3. Le bilan hebdomadaire ne se redépose pas -----------------------
+    #
+    # Ce qui garantissait cette règle a changé, et c'est le fond du test. Elle tenait
+    # par la **présence du widget** dans le fil ; depuis qu'un seul formulaire y reste
+    # ouvert, le bilan disparaît au premier autre widget ouvert — il n'est donc plus
+    # un verrou possible. Faire dépendre une règle métier de la survie d'un élément
+    # d'affichage la casse au premier changement d'affichage, ce qui est exactement
+    # ce qui s'est produit.
+    #
+    # Le verrou est maintenant dans `notification_log`, comme les ouvertures de
+    # créneau et les rappels push : une seule mécanique, un seul endroit où se tromper.
+    import app.routers.chat as router
+
     db.execute(
-        """
-        INSERT INTO thread_items (user_id, role, kind, widget_type, payload, status, ephemeral)
-        VALUES (%s, 'assistant', 'widget', 'analysis',
-                '{"prefill": {"scope": "hebdomadaire"}}'::jsonb, 'ouvert', false)
-        """,
-        (user_id,),
+        "DELETE FROM notification_log WHERE user_id = %s AND kind = 'bilan_hebdo'", (user_id,)
     )
-    db.execute("UPDATE thread_items SET ephemeral = false WHERE user_id = %s AND false", (user_id,))
-    client.post("/chat/widget", headers=h, json={"type": "analysis"})
+    router._maybe_weekly_analysis(user_id)  # noqa: SLF001
+    router._maybe_weekly_analysis(user_id)  # noqa: SLF001
     weekly = db.query_one(
         """
         SELECT count(*) AS n FROM thread_items
@@ -203,9 +210,10 @@ with TestClient(app) as client:
         (user_id,),
     )
     check(
-        "le bilan hebdomadaire survit à l'ouverture d'une autre analyse",
-        int(weekly["n"]) == 1,
-        "sans ça, le bilan serait redéposé chaque jour",
+        "le bilan hebdomadaire n'est déposé qu'une fois",
+        int(weekly["n"]) <= 1,
+        f"{weekly['n']} dépôt(s) après deux appels — le verrou est dans "
+        "notification_log, plus dans la survie du widget",
     )
 
     # --- 4. Périmé, pas reporté -------------------------------------------

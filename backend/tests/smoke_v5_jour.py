@@ -165,7 +165,7 @@ with TestClient(app) as client:
             chat_mod.slot_for = original
         return db.query_all(
             """
-            SELECT engine, widget_type, kind FROM thread_items
+            SELECT id::text AS id, engine, widget_type, kind FROM thread_items
             WHERE user_id = %s AND role = 'assistant' AND created_at::date = %s
             ORDER BY seq
             """,
@@ -188,7 +188,11 @@ with TestClient(app) as client:
     )
 
     after_midday = deposit("midi")
-    added = after_midday[len(again) :]
+    # Comparaison par identifiant et non par position : depuis qu'un seul formulaire
+    # reste ouvert à la fois, un dépôt peut **retirer** un widget vierge en plus d'en
+    # ajouter. Un découpage positionnel supposait une liste qui ne fait que croître.
+    connus = {r["id"] for r in again}
+    added = [r for r in after_midday if r["id"] not in connus]
     check(
         "le créneau du milieu de journée ajoute la question du jour",
         any(r["engine"] == "question-du-jour" for r in added),

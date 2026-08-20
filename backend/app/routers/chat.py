@@ -218,59 +218,42 @@ def _add_item(
     return row
 
 
-def _retire_ephemeral(user_id: str) -> list[str]:
-    """Retire toutes les vues en cours, et renvoie leurs identifiants.
-
-    Tous types confondus, et c'est voulu : on ne consulte pas ses chiffres et ses
-    sources en même temps. L'invariant tenu est donc **au plus une vue dans le
-    fil**, ce qui est la seule garantie qui empêche l'encombrement de revenir.
-
-    Suppression et non changement de statut : un widget de consultation ne
-    contient aucune donnée — `saved_values` est vide par construction, et la
-    clause `WHERE` le vérifie au lieu de le supposer. Il n'y a rien à archiver.
-    Les identifiants remontent au front pour qu'il retire de son propre état les
-    lignes qu'il a déjà affichées.
-    """
-    rows = db.execute_all_returning(
-        """
-        DELETE FROM thread_items
-        WHERE user_id = %s AND kind = 'widget'
-          AND ephemeral AND status = 'ouvert' AND saved_values = '{}'::jsonb
-        RETURNING id::text
-        """,
-        (user_id,),
-    )
-    return [r["id"] for r in rows]
+# `_retire_ephemeral` a disparu : il retirait les vues de consultation ouvertes et
+# vides, ce que `_retire_empty` fait maintenant pour **tous** les types. Deux
+# fonctions dont l'une est un sous-ensemble strict de l'autre finissent par diverger
+# sur la clause qu'on ne pense pas à modifier des deux côtés.
 
 
-def _retire_empty(user_id: str, widget_type: str | None) -> list[str]:
-    """Retire le formulaire du même type resté ouvert et vide, et rend son identifiant.
+def _retire_empty(user_id: str) -> list[str]:
+    """Ne laisse **qu'un seul** formulaire ouvert dans le fil, et rend les identifiants
+    de ceux qui partent.
 
     Un formulaire ouvert puis abandonné n'est pas un événement. Le dépôt applique
     déjà exactement ce raisonnement aux vues de consultation — « un widget de
-    consultation ne contient aucune donnée, il n'y a rien à archiver » — mais il ne
-    l'appliquait pas aux saisies, alors que le cas est le même : tant que rien n'est
-    validé, `saved_values` est vide, et il n'y a littéralement rien à conserver.
+    consultation ne contient aucune donnée, il n'y a rien à archiver » — et il vaut
+    mot pour mot pour une saisie : tant que rien n'est validé, `saved_values` est
+    vide, et il n'y a littéralement rien à conserver.
 
-    Sans ça, trois clics sur « Respirer » produisaient six lignes et zéro donnée. Sur
-    le fil le plus long de la base, neuf widgets sur trente-sept items n'avaient
-    jamais rien enregistré.
+    La règle portait d'abord sur le seul type qu'on rouvrait ; elle porte maintenant
+    sur **tous les types**. Ce qui reste du passage d'un formulaire non rempli, c'est
+    le message qui l'accompagnait — la proposition, sa justification chiffrée, ses
+    sources. Le fil garde donc la réponse en texte et perd le champ vide, ce qui est
+    exactement ce qu'il faut pour le relire : on ne remplit pas trois formulaires à
+    la fois, et en afficher trois donne surtout trois raisons de n'en remplir aucun.
 
     La clause **vérifie** que le widget est vide au lieu de le supposer, et ne touche
     ni aux widgets validés, ni aux reportés, ni aux périmés : tout ce qui porte une
     donnée ou une réponse de l'utilisateur reste dans le fil, définitivement. Le
     passé ne se réécrit pas — mais un formulaire vierge n'est pas du passé.
     """
-    if not widget_type:
-        return []
     rows = db.execute_all_returning(
         """
         DELETE FROM thread_items
-        WHERE user_id = %s AND kind = 'widget' AND widget_type = %s
+        WHERE user_id = %s AND kind = 'widget'
           AND status = 'ouvert' AND saved_values = '{}'::jsonb
         RETURNING id::text
         """,
-        (user_id, widget_type),
+        (user_id,),
     )
     return [r["id"] for r in rows]
 
@@ -318,13 +301,11 @@ def _items_from_decision(
     widget = decision.get("widget")
     if widget:
         ephemeral = _is_ephemeral(widget["type"], widget.get("ephemeral"))
-        if ephemeral:
-            retired += _retire_ephemeral(user_id)
-        else:
-            # Vaut aussi pour les dépôts, pas seulement pour les lancements manuels :
-            # le classeur est rappelé après chaque validation, et il peut reproposer
-            # une saisie dont le formulaire de l'ouverture du matin traîne encore.
-            retired += _retire_empty(user_id, widget["type"])
+        # Un seul widget ouvert à la fois, vue de consultation comprise. Vaut aussi
+        # pour les dépôts et pas seulement pour les lancements manuels : le classeur
+        # est rappelé après chaque validation, et il peut proposer une saisie alors
+        # que le formulaire de l'ouverture du matin traîne encore.
+        retired += _retire_empty(user_id)
         # Le calculé complète la proposition du modèle sans jamais l'écraser : si le
         # message parlait d'un chiffre lu dans la phrase, c'est celui-là qui compte.
         computed = _prefill_for(user_id, widget["type"])
@@ -372,17 +353,35 @@ def _maybe_weekly_analysis(user_id: str) -> None:
         """,
         (user_id,),
     )
-    proposed = db.query_one(
+    if last and last["jour"] and (today - last["jour"]).days < 7:
+        return
+
+    # Le verrou anti-redépôt passe par `notification_log`, comme les ouvertures de
+    # créneau et les rappels push. Il s'appuyait sur la **présence du widget** dans le
+    # fil, ce qui n'est plus tenable depuis qu'un seul formulaire y reste ouvert : le
+    # bilan disparaissait au premier autre widget, et se redéposait le lendemain.
+    #
+    # C'était de toute façon la mauvaise dépendance. Faire tenir une règle métier par
+    # la survie d'un élément d'affichage, c'est la casser au premier changement
+    # d'affichage — exactement ce qui vient d'arriver.
+    recent = db.query_one(
         """
-        SELECT max(created_at)::date AS jour FROM thread_items
-        WHERE user_id = %s AND widget_type = 'analysis'
-          AND payload->'prefill'->>'scope' = 'hebdomadaire'
+        SELECT max(sent_on) AS jour FROM notification_log
+        WHERE user_id = %s AND kind = 'bilan_hebdo'
         """,
         (user_id,),
     )
-    for row in (last, proposed):
-        if row and row["jour"] and (today - row["jour"]).days < 7:
-            return
+    if recent and recent["jour"] and (today - recent["jour"]).days < 7:
+        return
+    if not db.execute(
+        """
+        INSERT INTO notification_log (user_id, kind, sent_on, detail)
+        VALUES (%s, 'bilan_hebdo', %s, '{"origine": "ouverture"}'::jsonb)
+        ON CONFLICT (user_id, kind, sent_on) DO NOTHING
+        """,
+        (user_id, today),
+    ):
+        return  # un autre appel concurrent est passé avant
 
     _items_from_decision(
         user_id,
@@ -395,8 +394,8 @@ def _maybe_weekly_analysis(user_id: str) -> None:
                 "type": "analysis",
                 "prefill": {"scope": "hebdomadaire"},
                 "a_verifier": [],
-                # Durable, contrairement aux autres widgets d'analyse : c'est sa
-                # présence dans le fil qui empêche de redéposer le bilan demain.
+                # Durable une fois lancé : l'analyse écrit son corps dans le fil. Ce
+                # n'est plus lui qui empêche le redépôt — c'est `notification_log`.
                 "ephemeral": False,
             },
             "suggestions": ["Plus tard"],
@@ -695,7 +694,7 @@ def open_widget(payload: WidgetOpenIn, user: CurrentUser) -> dict[str, Any]:
     user_id = user["id"]
     widget_type = _resolve_noter(user_id) if payload.type == "noter" else payload.type
     ephemeral = _is_ephemeral(widget_type)
-    retired = _retire_ephemeral(user_id) if ephemeral else _retire_empty(user_id, widget_type)
+    retired = _retire_empty(user_id)
 
     items: list[dict[str, Any]] = []
     if payload.label and not ephemeral:
