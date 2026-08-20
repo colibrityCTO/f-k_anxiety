@@ -23,7 +23,10 @@ Deux façons d'entrer une donnée :
    `évitement 7`, et le check-in arrive **pré-rempli** dans le fil. Rien n'est enregistré avant
    que tu valides.
 2. **Tu ouvres le widget toi-même** avec le +. Le lanceur a deux niveaux et trois
-   entrées : **Noter**, **Pratiquer** et **Mes données**. « Noter »
+   verbes, rangés par ce qu'on vient faire et non par ce qui finit en base :
+   **Noter** enregistre une donnée (mon état, journal, exposition, échelles),
+   **Pratiquer** est un exercice minuté (respirer, méditer, sensations), **Mes
+   données** se lit et n'écrit rien. « Mon état »
    n'est pas un formulaire mais une demande — le serveur choisit le matin, le soir ou
    la mesure instantanée selon l'heure et selon ce qui manque déjà, ce qui rend
    impossible de résumer une journée qui n'est pas finie ou de saisir deux fois la
@@ -71,6 +74,12 @@ multiplicité, l'effet déjà mesuré de l'exercice proposé chez elle, le momen
 journée où son anxiété monte, ou la tendance des sept derniers jours. Trois règles :
 toujours chiffré, jamais un signal non retenu, et quand rien n'est calculable la ligne
 dit combien de jours il manque au lieu d'inventer une généralité.
+
+**Un seul formulaire ouvert dans le fil, à tout moment.** Ouvrir quelque chose retire
+celui qui restait vierge, quel que soit son type — ce qui reste de son passage, c'est
+le message qui l'accompagnait, avec sa justification et ses sources. On ne remplit pas
+trois formulaires à la fois, et en afficher trois donne surtout trois raisons de n'en
+remplir aucun. Rien de validé, reporté ou périmé n'est jamais touché.
 
 **Un formulaire long ne s'affiche jamais d'un bloc.** Les saisies en plusieurs temps —
 le matin, le soir, l'exposition intéroceptive, le questionnaire initial, la séquence de

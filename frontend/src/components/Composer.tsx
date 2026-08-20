@@ -17,23 +17,45 @@ import type { DayState, LaunchType } from '../lib/types'
  * « Mon parcours » n'y est plus non plus : il est sous le titre, déplié d'un geste,
  * parce que c'est l'état du jour et pas un événement à déposer dans un fil.
  *
- * Le reste se range en deux groupes. **Pratiquer** est ce qui se fait — le second
- * niveau est la porte d'entrée manuelle vers les exercices ; le programme du jour,
- * lui, en propose déjà un dans le fil avec sa justification chiffrée. **Mes
- * données** est ce qui se lit, jamais urgent, et qui occupait la moitié de l'écran
- * de lancement.
+ * Le reste se range en **trois verbes**, et le critère est ce qu'on vient faire, pas
+ * ce qui finit en base. **Noter** enregistre une donnée — l'état du jour, une entrée
+ * de journal, une tentative d'exposition, une échelle. **Pratiquer** est un exercice
+ * qu'on fait, minuté : respirer, méditer, provoquer volontairement les sensations
+ * redoutées. **Mes données** se lit et n'écrit rien.
+ *
+ * Le rangement précédent mélangeait les deux premiers : « Exposition », « Journal »
+ * et « Échelles » étaient sous *Pratiquer* alors qu'on n'y pratique rien, on y saisit.
+ * L'exposition intéroceptive reste dans *Pratiquer* bien qu'elle enregistre une
+ * prédiction et un résultat — on vient y faire l'exercice, l'enregistrement est ce
+ * qui en découle.
  */
 type Tile = { type: LaunchType; name: string; icon: string }
-type Group = { key: 'pratiquer' | 'donnees'; name: string; icon: string; note: string; tiles: Tile[] }
+type Group = { key: 'noter' | 'pratiquer' | 'donnees'; name: string; icon: string; note: string; tiles: Tile[] }
 
 // « Mon parcours » a quitté la grille : il vit sous le titre, en permanence. Un
 // programme n'est pas quelque chose qu'on lance, c'est l'état du jour.
-const DIRECT: Tile[] = [
-  // `noter` n'est pas un type de widget : c'est une demande, résolue côté serveur.
-  { type: 'noter', name: 'Noter', icon: 'noter' },
-]
+//
+// Aucune entrée directe : les trois verbes sont tous des groupes. Une grille
+// mélangeant des tuiles à un coup et des tuiles à deux coups obligeait à deviner, à
+// chaque tuile, si elle ouvrait quelque chose ou un sous-menu.
 
 const GROUPS: Group[] = [
+  {
+    key: 'noter',
+    name: 'Noter',
+    icon: 'noter',
+    note:
+      'Tout ce qui enregistre une donnée. Le premier suffit la plupart du temps : ' +
+      'l’application choisit le bon formulaire selon l’heure et selon ce qui manque.',
+    tiles: [
+      // `noter` n'est pas un type de widget : c'est une demande, résolue côté serveur
+      // en matin, soir ou mesure instantanée.
+      { type: 'noter', name: 'Mon état', icon: 'checkin' },
+      { type: 'journal', name: 'Journal', icon: 'journal' },
+      { type: 'exposition', name: 'Exposition', icon: 'expo' },
+      { type: 'echelles', name: 'Échelles', icon: 'scale' },
+    ],
+  },
   {
     key: 'pratiquer',
     name: 'Pratiquer',
@@ -43,9 +65,6 @@ const GROUPS: Group[] = [
       { type: 'breath', name: 'Respirer', icon: 'breath' },
       { type: 'meditation', name: 'Méditation', icon: 'meditation' },
       { type: 'interoceptif', name: 'Sensations', icon: 'sensations' },
-      { type: 'exposition', name: 'Exposition', icon: 'expo' },
-      { type: 'journal', name: 'Journal', icon: 'journal' },
-      { type: 'echelles', name: 'Échelles', icon: 'scale' },
     ],
   },
   {
@@ -101,9 +120,9 @@ export default function Composer({
   }
 
   /**
-   * Ce que « Noter » va ouvrir, en clair sous la tuile. Le serveur tranche seul,
-   * mais annoncer sa décision évite le seul reproche qu'on puisse faire à une
-   * entrée unique : ne pas savoir ce qu'on va obtenir en appuyant.
+   * Ce que « Mon état » va ouvrir, en clair sous la tuile. Le serveur tranche seul,
+   * mais annoncer sa décision évite le seul reproche qu'on puisse faire à une entrée
+   * unique : ne pas savoir ce qu'on obtient en appuyant.
    */
   const noterHint = !state
     ? null
@@ -162,26 +181,15 @@ export default function Composer({
                   >
                     <Icon name={tile.icon} />
                     <span className="nm">{tile.name}</span>
+                    {tile.type === 'noter' && noterHint && (
+                      <span className="tile-hint">{noterHint}</span>
+                    )}
                   </button>
                 ))}
               </div>
             </>
           ) : (
             <div className="tiles">
-              {DIRECT.map((tile) => (
-                <button
-                  key={tile.type}
-                  className="tile"
-                  disabled={busy}
-                  onClick={() => launch(tile)}
-                >
-                  <Icon name={tile.icon} />
-                  <span className="nm">{tile.name}</span>
-                  {tile.type === 'noter' && noterHint && (
-                    <span className="tile-hint">{noterHint}</span>
-                  )}
-                </button>
-              ))}
               {GROUPS.map((entry) => (
                 <button
                   key={entry.key}
