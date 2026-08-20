@@ -243,6 +243,38 @@ def _retire_ephemeral(user_id: str) -> list[str]:
     return [r["id"] for r in rows]
 
 
+def _retire_empty(user_id: str, widget_type: str | None) -> list[str]:
+    """Retire le formulaire du même type resté ouvert et vide, et rend son identifiant.
+
+    Un formulaire ouvert puis abandonné n'est pas un événement. Le dépôt applique
+    déjà exactement ce raisonnement aux vues de consultation — « un widget de
+    consultation ne contient aucune donnée, il n'y a rien à archiver » — mais il ne
+    l'appliquait pas aux saisies, alors que le cas est le même : tant que rien n'est
+    validé, `saved_values` est vide, et il n'y a littéralement rien à conserver.
+
+    Sans ça, trois clics sur « Respirer » produisaient six lignes et zéro donnée. Sur
+    le fil le plus long de la base, neuf widgets sur trente-sept items n'avaient
+    jamais rien enregistré.
+
+    La clause **vérifie** que le widget est vide au lieu de le supposer, et ne touche
+    ni aux widgets validés, ni aux reportés, ni aux périmés : tout ce qui porte une
+    donnée ou une réponse de l'utilisateur reste dans le fil, définitivement. Le
+    passé ne se réécrit pas — mais un formulaire vierge n'est pas du passé.
+    """
+    if not widget_type:
+        return []
+    rows = db.execute_all_returning(
+        """
+        DELETE FROM thread_items
+        WHERE user_id = %s AND kind = 'widget' AND widget_type = %s
+          AND status = 'ouvert' AND saved_values = '{}'::jsonb
+        RETURNING id::text
+        """,
+        (user_id, widget_type),
+    )
+    return [r["id"] for r in rows]
+
+
 def _items_from_decision(
     user_id: str, decision: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -288,6 +320,11 @@ def _items_from_decision(
         ephemeral = _is_ephemeral(widget["type"], widget.get("ephemeral"))
         if ephemeral:
             retired += _retire_ephemeral(user_id)
+        else:
+            # Vaut aussi pour les dépôts, pas seulement pour les lancements manuels :
+            # le classeur est rappelé après chaque validation, et il peut reproposer
+            # une saisie dont le formulaire de l'ouverture du matin traîne encore.
+            retired += _retire_empty(user_id, widget["type"])
         # Le calculé complète la proposition du modèle sans jamais l'écraser : si le
         # message parlait d'un chiffre lu dans la phrase, c'est celui-là qui compte.
         computed = _prefill_for(user_id, widget["type"])
@@ -658,7 +695,7 @@ def open_widget(payload: WidgetOpenIn, user: CurrentUser) -> dict[str, Any]:
     user_id = user["id"]
     widget_type = _resolve_noter(user_id) if payload.type == "noter" else payload.type
     ephemeral = _is_ephemeral(widget_type)
-    retired = _retire_ephemeral(user_id) if ephemeral else []
+    retired = _retire_ephemeral(user_id) if ephemeral else _retire_empty(user_id, widget_type)
 
     items: list[dict[str, Any]] = []
     if payload.label and not ephemeral:

@@ -310,6 +310,55 @@ with TestClient(app) as client:
         "moment — « tu l'as lu il y a six mois » n'est pas une garantie",
     )
 
+    # --- 6 ter. Un formulaire vide ne s'empile pas ---------------------------
+    #
+    # Trois clics sur « Respirer » produisaient trois formulaires vierges et trois
+    # messages, pour zéro donnée. Sur le fil le plus long de la base, neuf widgets
+    # sur trente-sept items n'avaient jamais rien enregistré.
+    for _ in range(3):
+        client.post("/chat/widget", headers=h, json={"type": "meditation", "label": "Méditation"})
+    ouverts = db.query_one(
+        """
+        SELECT count(*) AS n FROM thread_items
+        WHERE user_id = %s AND kind = 'widget' AND widget_type = 'meditation'
+          AND status = 'ouvert'
+        """,
+        (user_id,),
+    )
+    check(
+        "trois ouvertures du même formulaire n'en laissent qu'un",
+        int(ouverts["n"]) == 1,
+        f"{ouverts['n']} formulaire(s) « méditation » ouvert(s) — le vide n'est pas un "
+        "événement, il n'y a rien à archiver",
+    )
+
+    # Et la contrepartie, qui est ce qui rend la règle acceptable : ce qui porte une
+    # donnée ne bouge jamais. On valide, puis on rouvre.
+    encore = client.post(
+        "/chat/widget", headers=h, json={"type": "meditation", "label": "Méditation"}
+    ).json()
+    forme = next(i for i in encore["items"] if i["kind"] == "widget")
+    client.post(
+        f"/chat/widget/{forme['id']}/submit",
+        headers=h,
+        json={"values": {"slug": "scan-corporel", "duration_min": 20, "anxiety_before": 6,
+                         "anxiety_after": 4}},
+    )
+    client.post("/chat/widget", headers=h, json={"type": "meditation", "label": "Méditation"})
+    valides = db.query_one(
+        """
+        SELECT count(*) AS n FROM thread_items
+        WHERE user_id = %s AND kind = 'widget' AND widget_type = 'meditation'
+          AND status = 'valide'
+        """,
+        (user_id,),
+    )
+    check(
+        "mais un formulaire validé survit à toutes les réouvertures",
+        int(valides["n"]) == 1,
+        "le passé ne se réécrit pas — seul le vierge est retiré",
+    )
+
     # --- 7. L'assiduité a un dénominateur ------------------------------------
     program.build_day(user_id, {}, today)
     statuts = {
