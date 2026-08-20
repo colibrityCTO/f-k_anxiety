@@ -1,6 +1,11 @@
 /* ===========================================================================
    FUCK ANXIETY — BOLD MONOCHROME / NEO-BRUTALIST
-   Noir pur, blanc pur. Aucun arrondi. Transitions sèches.
+   Encre noire sur papier blanc. Aucun arrondi. Transitions sèches.
+
+   Les deux variables portent enfin leur sens : `--ink` est ce qui écrit, `--paper`
+   est le fond. Elles étaient employées à l'envers — le fond était l'encre —, ce qui
+   rendait chaque règle à relire deux fois. Seuls les usages ont été échangés ; les
+   valeurs n'ont pas bougé.
    Les états se jouent en inversion de contraste ou en opacité.
 
    UNE seule couleur dans tout le produit, et elle a un seul emploi : marquer les
@@ -13,8 +18,8 @@
    =========================================================================== */
 
 :root {
-  --ink: #000000;
-  --paper: #ffffff;
+  --ink: #000000;   /* ce qui écrit */
+  --paper: #ffffff; /* le fond */
   /* Voir l'en-tête : usage unique, les explications. */
   --accent: #ffe600;
   --display: 'Anton', 'Haettenschweiler', 'Arial Narrow', Impact, sans-serif;
@@ -31,7 +36,7 @@
      la marge laissée à droite est ce qui distingue « ce que dit l'app » de
      « ce que tu dis », collé au bord opposé. */
   --fil: 90%;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 *,
@@ -47,20 +52,20 @@ body,
   height: 100%;
 }
 html {
-  background: var(--ink);
+  background: var(--paper);
 }
 body {
   margin: 0;
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--body);
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 ::selection {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 h1,
@@ -88,8 +93,8 @@ a {
   transition: background var(--snap), color var(--snap);
 }
 a:hover {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
   text-decoration: none;
 }
 code,
@@ -117,7 +122,7 @@ code {
   opacity: 0.6;
 }
 :focus-visible {
-  outline: var(--bt) solid var(--paper);
+  outline: var(--bt) solid var(--ink);
   outline-offset: 3px;
 }
 
@@ -129,8 +134,8 @@ code {
   height: 100dvh;
   max-width: 760px;
   margin: 0 auto;
-  border-left: var(--b) solid var(--paper);
-  border-right: var(--b) solid var(--paper);
+  border-left: var(--b) solid var(--ink);
+  border-right: var(--b) solid var(--ink);
 }
 @media (max-width: 800px) {
   .app {
@@ -155,7 +160,7 @@ code {
   justify-content: space-between;
   gap: var(--g2);
   padding: var(--g2) var(--g3) 12px;
-  border-bottom: var(--b) solid var(--paper);
+  border-bottom: var(--b) solid var(--ink);
   flex: 0 0 auto;
 }
 .wordmark {
@@ -179,11 +184,11 @@ code {
   width: 10px;
 }
 .thread::-webkit-scrollbar-thumb {
-  background: var(--paper);
+  background: var(--ink);
 }
 .thread::-webkit-scrollbar-track {
-  background: var(--ink);
-  border-left: 1px solid var(--paper);
+  background: var(--paper);
+  border-left: 1px solid var(--ink);
 }
 
 /* --- Messages : deux fenêtres, vide contre plein ------------------------ */
@@ -194,7 +199,7 @@ code {
   width: var(--fil);
   margin-right: auto;
   padding: 14px var(--g2);
-  border: var(--b) solid var(--paper);
+  border: var(--b) solid var(--ink);
   font-size: 1rem;
 }
 /* L'utilisateur, lui, se serre à droite : un bloc plein qui épouse son contenu. */
@@ -203,18 +208,23 @@ code {
   max-width: min(46ch, 85%);
   margin-left: auto;
   margin-right: 0;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
   font-weight: 500;
 }
 /* L'explication : un autre registre, donc un autre traitement.
-   Cadre et texte en accent, trait épais à gauche — la même géométrie que le reste,
-   rien d'arrondi, aucun fond plein : un pavé de couleur pleine se lirait comme une
-   alerte, et ce n'en est pas une. */
+
+   Sur fond blanc, le jaune ne peut pas servir de couleur de texte — 1,27:1 contre
+   le blanc, illisible. Il devient donc le fond, et c'est mieux : sur du papier, un
+   aplat jaune sous du texte noir est un **surligneur**, la marque universelle de
+   « ça, tu le lis une fois et tu t'en souviens ». Le même aplat sur fond noir
+   aurait crié l'alarme ; ici il ne crie rien, il souligne. Texte et cadre restent
+   à l'encre, donc le contraste est celui de tout le reste de l'application. */
 .msg-explain {
-  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--ink);
+  border-color: var(--ink);
   border-left-width: 6px;
-  color: var(--accent);
 }
 .msg-explain-tag {
   display: block;
@@ -225,12 +235,12 @@ code {
   margin-bottom: 10px;
   opacity: 0.8;
 }
-/* Les liens et le gras à l'intérieur héritent de l'accent : un mot blanc au milieu
-   d'un paragraphe coloré casse la lecture au lieu d'appuyer dessus. */
+/* Le gras et les liens restent à l'encre : sur un surlignage, c'est le fond qui
+   porte la distinction, pas la couleur des mots. */
 .msg-explain strong,
 .msg-explain b,
 .msg-explain a {
-  color: var(--accent);
+  color: var(--ink);
 }
 
 /* Réponses pré-choisies proposées par l'IA, dans son message. */
@@ -240,7 +250,7 @@ code {
   gap: 6px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.45);
+  border-top: 1px solid rgba(0, 0, 0, 0.45);
 }
 
 /* --- Widget : le bloc unitaire ------------------------------------------ */
@@ -250,8 +260,8 @@ code {
      réponse, pas une pièce jointe. */
   width: var(--fil);
   margin-right: auto;
-  border: var(--b) solid var(--paper);
-  background: var(--ink);
+  border: var(--b) solid var(--ink);
+  background: var(--paper);
 }
 .w-head {
   display: flex;
@@ -259,7 +269,7 @@ code {
   justify-content: space-between;
   gap: var(--g2);
   padding: 12px var(--g2);
-  border-bottom: var(--b) solid var(--paper);
+  border-bottom: var(--b) solid var(--ink);
 }
 .w-toggle {
   width: 100%;
@@ -270,7 +280,7 @@ code {
   letter-spacing: normal;
   text-align: left;
   border: 0;
-  border-bottom: var(--b) solid var(--paper);
+  border-bottom: var(--b) solid var(--ink);
   transition: none;
 }
 .w-toggle:hover:not(:disabled) {
@@ -278,8 +288,8 @@ code {
   color: inherit;
 }
 .w-toggle:hover .w-chev {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 /* Widget replié : le titre et son interrupteur, rien d'autre — ni trait sous
    l'en-tête, ni étiquette. */
@@ -319,7 +329,7 @@ code {
 }
 .w-foot {
   padding: var(--g2);
-  border-top: var(--b) solid var(--paper);
+  border-top: var(--b) solid var(--ink);
   display: flex;
   gap: var(--g1);
   flex-wrap: wrap;
@@ -371,20 +381,20 @@ button,
   transition: background var(--snap), color var(--snap);
 }
 button:hover:not(:disabled) {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 button:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
 .btn-primary {
-  background: var(--paper);
-  color: var(--ink);
-}
-.btn-primary:hover:not(:disabled) {
   background: var(--ink);
   color: var(--paper);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--paper);
+  color: var(--ink);
 }
 .btn-sm {
   padding: 8px 12px;
@@ -559,8 +569,8 @@ input[type='range']::-moz-range-thumb {
   border: var(--b) solid currentColor;
 }
 .chip[aria-pressed='true'] {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 input[type='checkbox'] {
   appearance: none;
@@ -577,7 +587,7 @@ input[type='checkbox']:checked {
 
 /* Échelle : 7 questions, 4 réponses */
 .q {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
   padding: var(--g2) 0;
 }
 .q:first-child {
@@ -599,8 +609,8 @@ input[type='checkbox']:checked {
   line-height: 1.2;
 }
 .opt[aria-pressed='true'] {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 /* --- « D'où ça sort » --------------------------------------------------- */
@@ -638,8 +648,8 @@ input[type='checkbox']:checked {
 }
 .why[open] summary::before {
   content: '–';
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 .why-body {
   margin-top: var(--g2);
@@ -731,8 +741,8 @@ th {
   transition: transform var(--snap);
 }
 .sq-full {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 .phase {
   font-family: var(--display);
@@ -855,24 +865,24 @@ th {
   display: inline-block;
   min-width: 16px;
   padding: 0 4px;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
   font-size: 0.5625rem;
   font-weight: 700;
   text-align: center;
   vertical-align: 2px;
 }
 .msg-me .cite {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
 }
 
 /* --- Barre de saisie : toujours en bas -------------------------------- */
 
 .composer {
   flex: 0 0 auto;
-  border-top: var(--b) solid var(--paper);
-  background: var(--ink);
+  border-top: var(--b) solid var(--ink);
+  background: var(--paper);
 }
 .inputrow {
   display: flex;
@@ -887,8 +897,8 @@ th {
   place-items: center;
 }
 .iconbtn[aria-expanded='true'] {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 .inputrow input {
   flex: 1 1 auto;
@@ -901,18 +911,18 @@ th {
   width: 64px;
   flex: 0 0 auto;
   padding: 0;
-  background: var(--paper);
-  color: var(--ink);
-}
-.sendbtn:hover:not(:disabled) {
   background: var(--ink);
   color: var(--paper);
+}
+.sendbtn:hover:not(:disabled) {
+  background: var(--paper);
+  color: var(--ink);
 }
 
 /* --- Lanceur de widgets ------------------------------------------------ */
 
 .launcher {
-  border-top: var(--b) solid var(--paper);
+  border-top: var(--b) solid var(--ink);
   padding: var(--g2) var(--g3);
   max-height: 46dvh;
   overflow-y: auto;
@@ -1004,8 +1014,8 @@ th {
    inversion que le reste de l'interface, où le plein marque l'état accompli. */
 .dayprog-cell.is-done {
   opacity: 1;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 .dayprog-cell:disabled {
   cursor: default;
@@ -1061,8 +1071,8 @@ th {
 }
 .error-text {
   display: inline-block;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
   font-weight: 700;
   font-size: 0.8125rem;
   padding: 6px 10px;
@@ -1142,8 +1152,8 @@ th {
   transition: background var(--snap), color var(--snap);
 }
 .chip.on {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 /* Séparateur de jour. Le trait traverse, l'étiquette s'assoit dessus — le fil
@@ -1198,7 +1208,7 @@ th {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: var(--paper);
+  background: var(--ink);
 }
 /* Encadré d'honnêteté : sert à dire ce qui ne va pas (pondération impossible,
    fourchette mal calibrée) au lieu de le corriger en silence. */
@@ -1276,7 +1286,7 @@ th {
   position: fixed;
   inset: 0;
   z-index: 45;
-  background: var(--ink);
+  background: var(--paper);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -1287,10 +1297,10 @@ th {
   align-items: center;
   justify-content: space-between;
   padding: var(--g2);
-  border-bottom: var(--bt) solid var(--paper);
+  border-bottom: var(--bt) solid var(--ink);
   position: sticky;
   top: 0;
-  background: var(--ink);
+  background: var(--paper);
 }
 .page-title {
   font-family: var(--display);
@@ -1320,8 +1330,8 @@ th {
   right: -2px;
   width: 9px;
   height: 9px;
-  background: var(--paper);
-  border: 2px solid var(--ink);
+  background: var(--ink);
+  border: 2px solid var(--paper);
 }
 
 /* Case à cocher avec son explication à côté, pas en dessous : un consentement se
@@ -1349,7 +1359,7 @@ th {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: var(--ink);
+  background: var(--paper);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -1360,10 +1370,10 @@ th {
   align-items: center;
   justify-content: space-between;
   padding: var(--g2);
-  border-bottom: var(--bt) solid var(--paper);
+  border-bottom: var(--bt) solid var(--ink);
   position: sticky;
   top: 0;
-  background: var(--ink);
+  background: var(--paper);
 }
 .qc-eyebrow {
   font-family: var(--display);
@@ -1389,7 +1399,7 @@ th {
    ça passe », et non « respire et ça s'arrête ». La seconde formulation promet un
    contrôle qui n'existe pas — c'est elle qui crée la dépendance. */
 .qc-framing {
-  border-left: var(--bt) solid var(--paper);
+  border-left: var(--bt) solid var(--ink);
   padding-left: var(--g2);
   margin: 0 0 var(--g3);
   opacity: 0.85;
@@ -1410,8 +1420,8 @@ th {
   cursor: pointer;
 }
 .qc-card:active {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 .qc-named {
   font-family: var(--display);
@@ -1441,7 +1451,7 @@ th {
 .qc-orb {
   width: 140px;
   height: 140px;
-  border: var(--bt) solid var(--paper);
+  border: var(--bt) solid var(--ink);
   animation-name: qc-cycle;
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
@@ -1482,13 +1492,13 @@ th {
   cursor: pointer;
 }
 .qc-item.done {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 /* Porte de contre-indications. Encadrée en épais : ce n'est pas un avertissement
    décoratif, l'outil ne démarre pas sans, et le serveur refuse de l'enregistrer. */
 .qc-gate {
-  border: var(--bt) solid var(--paper);
+  border: var(--bt) solid var(--ink);
   padding: var(--g2);
   display: grid;
   gap: var(--g2);
@@ -1519,10 +1529,10 @@ th {
   cursor: pointer;
 }
 .qc-cell.lit {
-  background: var(--paper);
+  background: var(--ink);
 }
 .qc-cell.on {
-  background: var(--paper);
+  background: var(--ink);
   opacity: 0.45;
 }
 /* La preuve accumulée : « N épisodes, durée médiane X, redouté arrivé 0 fois ». */
@@ -1536,13 +1546,12 @@ th {
   margin-top: var(--g3);
 }
 /* L'alerte d'usage : même registre que les explications — quelque chose à
-   comprendre, pas une instruction — donc le même accent. Trait épais à gauche,
-   aucun fond plein : sur un écran de sortie de crise, un pavé de couleur pleine se
-   lirait comme une nouvelle alarme. */
+   comprendre, pas une instruction — donc le même surlignage. */
 .qc-alert {
-  border: var(--b) solid var(--accent);
+  background: var(--accent);
+  color: var(--ink);
+  border: var(--b) solid var(--ink);
   border-left-width: 6px;
-  color: var(--accent);
   padding: var(--g2);
   margin: var(--g2) 0 0;
   line-height: 1.5;
@@ -1556,15 +1565,15 @@ th {
   letter-spacing: 0.06em;
   font-size: 0.875rem;
   padding: 0 12px;
-  border: var(--b) solid var(--paper);
-  background: var(--paper);
-  color: var(--ink);
+  border: var(--b) solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
   cursor: pointer;
   align-self: stretch;
 }
 .panicbtn:active {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
 }
 
 @media (prefers-reduced-motion: reduce) {

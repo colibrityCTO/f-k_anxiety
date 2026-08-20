@@ -77,7 +77,7 @@ export default function Sources({ item }: WidgetProps) {
         {docs.map((doc) => (
           <li
             key={doc.doc_id}
-            style={{ borderBottom: '1px solid rgba(255,255,255,.35)', padding: '10px 0' }}
+            style={{ borderBottom: '1px solid rgba(0,0,0,.35)', padding: '10px 0' }}
           >
             <button
               className="btn-sm"

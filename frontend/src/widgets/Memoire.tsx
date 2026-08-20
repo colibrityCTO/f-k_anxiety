@@ -102,7 +102,7 @@ export default function Memoire(_props: WidgetProps) {
       )}
       <ul className="list-reset">
         {(rows ?? []).map((row, index) => (
-          <li key={index} style={{ borderBottom: '1px solid rgba(255,255,255,.35)', padding: '10px 0' }}>
+          <li key={index} style={{ borderBottom: '1px solid rgba(0,0,0,.35)', padding: '10px 0' }}>
             <p className="tiny dim" style={{ marginBottom: 2 }}>
               {LABELS[row.source_kind] ?? row.source_kind} · {row.entry_date ?? 'sans date'}
             </p>

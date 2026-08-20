@@ -107,7 +107,7 @@ export default function Journal({ item, busy, onSubmit, onSkip }: WidgetProps) {
             {past.length === 0 && <p className="small dim">Aucune entrée à corriger.</p>}
             <ul className="list-reset">
               {past.slice(0, 15).map((entry) => (
-                <li key={entry.id} style={{ borderBottom: '1px solid rgba(255,255,255,.35)', padding: '8px 0' }}>
+                <li key={entry.id} style={{ borderBottom: '1px solid rgba(0,0,0,.35)', padding: '8px 0' }}>
                   <button
                     className="btn-sm"
                     style={{ border: 0, padding: 0, textAlign: 'left', textTransform: 'none', letterSpacing: 0, fontSize: '0.875rem', fontWeight: 400 }}
