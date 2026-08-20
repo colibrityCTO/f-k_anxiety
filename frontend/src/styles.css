@@ -1031,12 +1031,8 @@ th {
   flex: 0 0 auto;
   border-bottom: var(--b) solid var(--ink);
   padding: 10px var(--g3) 12px;
-}
-/* Déplié, le panneau peut être long : il défile sur lui-même plutôt que de pousser
-   le fil hors de l'écran. */
-.parcours.is-open {
-  max-height: 64dvh;
-  overflow-y: auto;
+  /* Pas de défilement ici : les chiffres ne doivent jamais sortir de l'écran. Seul
+     le corps déplié défile, et il porte sa propre hauteur maximale. */
 }
 .parcours-head {
   display: flex;
@@ -1081,63 +1077,26 @@ th {
   fill: none;
   stroke-width: 2.5;
 }
-.parcours-cells {
-  display: flex;
-  gap: 4px;
+/* Les chiffres, en tête et fixes. Plus compacts que dans le corps du parcours :
+   ils sont là en permanence, ils ne peuvent pas prendre la place d'un titre. */
+.parcours-sum {
   margin-top: 8px;
 }
+.parcours-sum > div {
+  padding: 5px 10px;
+  min-width: 82px;
+}
+.parcours-sum b {
+  font-size: 1.125rem;
+}
+/* Le texte, lui, défile — et seulement lui. On peut parcourir toute la liste des
+   activités sans perdre de vue où on en est. */
 .parcours-body {
   margin-top: var(--g2);
   padding-top: var(--g2);
   border-top: var(--b) solid var(--ink);
-}
-
-/* --- Les cases du socle -------------------------------------------------- */
-
-/* Trois cases, cliquables, et un compte. Volontairement muet quand tout est fait :
-   tenir le socle est la normale, pas une performance à saluer. */
-.dayprog-cell {
-  border: 2px solid currentColor;
-  padding: 3px 7px;
-  font-size: 0.5rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  line-height: 1.2;
-  opacity: 0.45;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-/* Fond plein pour ce qui est fait, contour seul pour ce qui reste : la même
-   inversion que le reste de l'interface, où le plein marque l'état accompli. */
-.dayprog-cell.is-done {
-  opacity: 1;
-  background: var(--ink);
-  color: var(--paper);
-}
-.dayprog-cell:disabled {
-  cursor: default;
-}
-.dayprog-count {
-  font-size: 0.5625rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  opacity: 0.6;
-  white-space: nowrap;
-}
-/* Sur un écran étroit le nom de l'application prend déjà toute la largeur : les
-   cases passent sous lui plutôt que de comprimer les trois éléments de la barre. */
-@media (max-width: 560px) {
-  .topbar {
-    flex-wrap: wrap;
-  }
-  .dayprog {
-    order: 3;
-    width: 100%;
-    justify-content: space-between;
-  }
+  max-height: 52dvh;
+  overflow-y: auto;
 }
 
 /* --- Connexion : le seul écran hors du fil ---------------------------- */

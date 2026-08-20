@@ -192,19 +192,6 @@ def day_state(user_id: str, today: dt.date | None = None) -> dict[str, Any]:
         (user_id,),
     )
 
-    # --- Le socle du jour, et lui seul -------------------------------------
-    #
-    # Ce qui est *attendu* aujourd'hui, par opposition à ce qui est *proposé*. La
-    # distinction porte toute la barre de progression : « Mon parcours » affichait
-    # `fait / total` sur les cinq à huit items du programme tout en écrivant, deux
-    # écrans plus bas, qu'un seul était attendu. Quelqu'un qui avait fait exactement
-    # ce qu'on lui demandait lisait donc « 1/7 » — la barre annonçait un échec
-    # pendant que le contrat annonçait une réussite.
-    #
-    # Le socle est le contrat : la saisie du jour, la respiration, le journal. Le
-    # reste est proposé, montré dans le parcours, et ne pèse pas.
-    socle = _socle_progress(user_id, today, moments)
-
     # Le check-in a-t-il été explicitement refusé aujourd'hui ? Lu dans
     # `activity_logs` et non dans le fil : c'est la table que `_log_skip` alimente, et
     # celle sur laquelle tous les signaux se calculent.
@@ -242,65 +229,15 @@ def day_state(user_id: str, today: dt.date | None = None) -> dict[str, Any]:
         "exposition_due": maintenance and (days_since_exposure is None or days_since_exposure >= 7),
         "jours_depuis_exposition": days_since_exposure,
         "jours_notes": int(logged["n"]) if logged else 0,
-        "socle": socle,
         "saisie_reportee": refus is not None,
     }
 
 
-# Le socle quotidien, en un seul endroit. `program.build_day` compose sa liste à
-# partir des mêmes slugs ; les faire diverger produirait une barre qui ne compte pas
-# ce que le parcours affiche.
-SOCLE_SLUGS: tuple[str, ...] = ("checkin-quotidien", "respiration-lente-10", "journal-libre")
-
-SOCLE_LABELS: dict[str, str] = {
-    "checkin-quotidien": "Noter",
-    "respiration-lente-10": "Respirer",
-    "journal-libre": "Écrire",
-}
-
-
-def _socle_progress(
-    user_id: str, today: dt.date, moments: dict[str, Any], now: dt.datetime | None = None
-) -> dict[str, Any]:
-    """Où en est le contrat du jour : trois lignes, faites ou pas.
-
-    Le check-in ne se lit pas dans `activity_logs` mais dans `daily_checkins` : c'est
-    la table qui porte la donnée, et le journal d'activités n'en est qu'un reflet
-    écrit par le gestionnaire. Se fier au reflet, c'était afficher « pas fait » si
-    l'écriture secondaire échouait.
-
-    Et la ligne « Noter » suit le **créneau en cours**, pas la journée entière. Le
-    faire autrement produisait une contradiction visible : à vingt heures, quelqu'un
-    qui avait noté sa nuit le matin lisait « fait » dans la barre pendant que le fil,
-    juste en dessous, lui réclamait sa journée. `checkin_done` reste vrai dans les
-    deux cas — c'est la bonne sémantique pour les signaux, qui ont besoin d'une ligne
-    par jour, pas d'une ligne par moment.
-    """
-    hour = (now or dt.datetime.now()).hour
-    saisie_due = "soir" if hour >= EVENING_FROM else "matin"
-    rows = {
-        row["activity_slug"]: row["status"]
-        for row in db.query_all(
-            """
-            SELECT activity_slug, status FROM activity_logs
-            WHERE user_id = %s AND entry_date = %s AND activity_slug = ANY(%s)
-            """,
-            (user_id, today, list(SOCLE_SLUGS)),
-        )
-    }
-    items = []
-    for slug in SOCLE_SLUGS:
-        done = (
-            saisie_due in moments
-            if slug == "checkin-quotidien"
-            else rows.get(slug) in {"fait", "partiel"}
-        )
-        items.append({"slug": slug, "label": SOCLE_LABELS[slug], "fait": done})
-    return {
-        "items": items,
-        "fait": sum(1 for item in items if item["fait"]),
-        "total": len(items),
-    }
+# L'avancement du socle a vécu ici quelques heures, pour alimenter une barre de
+# progression dans l'en-tête. Le bandeau « Mon parcours » le lit désormais dans
+# `GET /program/today`, qui le calcule déjà — le garder en double dans l'état du jour
+# aurait créé exactement ce que l'audit venait de reprocher au reste du code : un
+# champ calculé à chaque appel et lu par personne.
 
 
 def _thread_tail(user_id: str, limit: int = 10) -> list[dict[str, Any]]:

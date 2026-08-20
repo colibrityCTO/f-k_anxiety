@@ -963,4 +963,9 @@ def build_day(user_id: str, profile: dict[str, Any], day: dt.date | None = None)
         "gad7_due": gad7_due,
         "jours_pratiques": days_practiced,
         "notices": notices,
+        # Les signaux déjà calculés plus haut, rendus à l'appelant. Le classeur en a
+        # besoin pour personnaliser ce qu'il dit, et les recalculer coûterait une
+        # seconde passe complète sur l'historique à chaque tour. `ProgramDayOut`
+        # ignore les clés qu'il ne déclare pas : rien n'en sort par l'API.
+        "_signaux": sig,
     }

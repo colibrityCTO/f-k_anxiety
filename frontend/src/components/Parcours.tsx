@@ -1,34 +1,29 @@
 import { useState } from 'react'
 import Icon from './Icon'
-import ProgrammeDuJour from './ProgrammeDuJour'
-import type { DayState, LaunchType } from '../lib/types'
+import ProgrammeDuJour, { ChiffresDuJour, useProgramDay } from './ProgrammeDuJour'
+import type { LaunchType } from '../lib/types'
 
 /**
  * Le bandeau du jour, sous le titre, toujours là.
  *
- * Il porte deux choses et rien d'autre : **la date**, et **le contrat du jour** —
- * noter, respirer, écrire. Déplié, il montre le programme entier : le module de la
- * semaine, ce que les données ont déclenché, et la justification chiffrée de chaque
- * item.
+ * Ce qu'il montre en permanence : la date et **les cinq chiffres**. C'est la donnée
+ * qu'on garde sous les yeux — le socle du jour, ce qui a été fait en plus, les jours
+ * d'affilée, les jours réellement pratiqués et l'assiduité. Elle était sous la ligne
+ * de flottaison, dans un panneau qu'il fallait déplier : la seule information qui
+ * mérite d'être permanente était la seule qu'il fallait aller chercher.
  *
- * Pourquoi il n'est plus un widget du fil. Un programme n'est pas un événement,
- * c'est l'état du jour : le déposer dans un fil chronologique le faisait défiler
- * avec le reste, et deux minutes plus tard il fallait le rouvrir depuis un menu.
- * L'information la plus consultée était la plus difficile à retrouver.
+ * Ce qu'il cache jusqu'au clic : le texte. Le module de la semaine, les notices, la
+ * liste des activités et leurs justifications. C'est long, ça se lit une fois, et ça
+ * peut défiler.
  *
- * Pourquoi seul le socle est compté dans l'en-tête. Le programme propose cinq à huit
- * items ; un seul ensemble est réellement attendu. Afficher « 1/7 » à quelqu'un qui a
- * fait exactement ce qu'on lui demandait, c'est annoncer un échec là où le contrat
- * annonce une réussite. Le reste est visible en dépliant, jamais compté comme un dû.
+ * D'où la séparation stricte des deux zones dans la mise en page : les chiffres sont
+ * hors du conteneur défilant. On peut parcourir toute la liste des activités sans
+ * jamais perdre de vue où on en est — c'est tout l'intérêt de les avoir remontés.
+ *
+ * Pourquoi ce n'est plus un widget du fil : un programme est l'état du jour, pas un
+ * événement. Déposé dans un fil chronologique, il défilait avec le reste, et
+ * l'information la plus consultée devenait la plus difficile à retrouver.
  */
-
-/** Ce que chaque ligne du socle ouvre. La saisie passe par `noter`, résolue par le serveur. */
-const OPENS: Record<string, LaunchType> = {
-  'checkin-quotidien': 'noter',
-  'respiration-lente-10': 'breath',
-  'journal-libre': 'journal',
-}
-
 function dateDuJour(): string {
   const d = new Date()
   const texte = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -36,21 +31,31 @@ function dateDuJour(): string {
 }
 
 export default function Parcours({
-  state,
   busy,
   onOpen,
 }: {
-  state: DayState | null
   busy: boolean
   onOpen: (type: LaunchType, label?: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  if (!state?.socle) return null
-  const { items, fait, total } = state.socle
-  const complet = fait >= total
+  const { day, error } = useProgramDay()
+
+  // Rien tant que le programme n'est pas là : une carcasse vide sous le titre, en
+  // attente, coûte plus qu'elle n'apporte. En cas d'échec on le dit, sans bloquer
+  // le fil qui, lui, fonctionne.
+  if (error) {
+    return (
+      <section className="parcours">
+        <p className="tiny dim" style={{ margin: 0 }}>
+          Programme du jour indisponible.
+        </p>
+      </section>
+    )
+  }
+  if (!day) return null
 
   return (
-    <section className={`parcours${open ? ' is-open' : ''}`}>
+    <section className="parcours">
       <button
         type="button"
         className="parcours-head"
@@ -59,37 +64,17 @@ export default function Parcours({
       >
         <span className="parcours-title">Mon parcours</span>
         <span className="parcours-date">{dateDuJour()}</span>
-        <span className="parcours-count">
-          {/* Pas de félicitation quand c'est plein : tenir le socle est la normale,
-              pas une performance. Ce qui est dit à la place est utile. */}
-          {complet ? 'fait · le reste est libre' : `${fait}/${total}`}
-        </span>
         <span className="parcours-chev">
           <Icon name={open ? 'minus' : 'plus'} size={14} />
         </span>
       </button>
 
-      {/* Les trois cases restent visibles repliées : c'est l'information qu'on vient
-          chercher vingt fois par jour, et la déplier pour la lire annulerait tout le
-          bénéfice de l'avoir remontée ici. */}
-      <div className="parcours-cells">
-        {items.map((item) => (
-          <button
-            key={item.slug}
-            type="button"
-            className={`dayprog-cell${item.fait ? ' is-done' : ''}`}
-            disabled={busy}
-            title={item.fait ? `${item.label} — fait` : `${item.label} — à faire`}
-            onClick={() => onOpen(OPENS[item.slug] ?? 'noter', item.label)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {/* Hors du conteneur défilant, volontairement. */}
+      <ChiffresDuJour day={day} />
 
       {open && (
         <div className="parcours-body">
-          <ProgrammeDuJour busy={busy} onOpen={onOpen} />
+          <ProgrammeDuJour day={day} busy={busy} onOpen={onOpen} />
         </div>
       )}
     </section>

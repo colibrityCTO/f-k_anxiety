@@ -46,16 +46,16 @@ const SLOTS: { key: string; title: string; note: string }[] = [
   },
 ]
 
-export default function ProgrammeDuJour({
-  busy,
-  onOpen,
-}: {
-  busy: boolean
-  onOpen: (type: LaunchType, label?: string) => void
-}) {
+/**
+ * Le chargement du programme, partagé.
+ *
+ * Deux endroits en ont besoin et doivent voir exactement la même chose : le bandeau
+ * permanent, qui n'en affiche que les chiffres, et le corps dépliable, qui affiche
+ * le reste. Deux appels séparés auraient pu renvoyer deux états du jour différents.
+ */
+export function useProgramDay(): { day: ProgramDay | null; error: string | null } {
   const [day, setDay] = useState<ProgramDay | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [shown, setShown] = useState<string | null>(null)
 
   useEffect(() => {
     api
@@ -66,62 +66,72 @@ export default function ProgrammeDuJour({
       )
   }, [])
 
-  if (error) return <p className="error-text">{error}</p>
-  if (!day) return <p className="dim">Chargement…</p>
+  return { day, error }
+}
 
-  /**
-   * Deux comptes, et pas un seul, parce qu'un seul mentait.
-   *
-   * Ce widget affichait `fait / total` sur les cinq à huit items du jour tout en
-   * écrivant, dans son propre panneau de preuves, qu'un seul était attendu. Quelqu'un
-   * qui avait fait exactement ce qu'on lui demandait lisait donc « 1/7 » : la barre
-   * annonçait un échec pendant que le contrat annonçait une réussite.
-   *
-   * Le socle porte le contrat — c'est lui, et lui seul, qu'on retrouve dans la barre
-   * du haut. Ce qui est fait au-delà est compté à part, comme un supplément, jamais
-   * comme un dû.
-   */
-  const isDone = (item: ProgramDay['items'][number]) =>
-    item.status === 'fait' || item.status === 'partiel'
+/**
+ * Les cinq chiffres du jour. Séparés du reste parce qu'ils ne se replient pas et ne
+ * défilent pas : c'est la donnée qu'on garde sous les yeux, pas un détail à
+ * consulter. Le reste — module, notices, liste des activités — est du texte, et le
+ * texte peut défiler.
+ */
+export function ChiffresDuJour({ day }: { day: ProgramDay }) {
   const socle = day.items.filter((i) => i.slot === 'socle')
-  const socleDone = socle.filter(isDone).length
-  const extra = day.items.filter((i) => i.slot !== 'socle' && isDone(i)).length
+  const socleDone = socle.filter((i) => i.status === 'fait' || i.status === 'partiel').length
+  const extra = day.items.filter(
+    (i) => i.slot !== 'socle' && (i.status === 'fait' || i.status === 'partiel'),
+  ).length
+
+  return (
+    <div className="sum parcours-sum">
+      <div>
+        <span>Le socle</span>
+        <b>
+          {socleDone}/{socle.length}
+        </b>
+      </div>
+      <div>
+        <span>En plus</span>
+        <b>{extra}</b>
+      </div>
+      <div>
+        <span>Jours d'affilée</span>
+        <b>{day.streak}</b>
+      </div>
+      {/* Les deux chiffres côte à côte : la semaine avance au calendrier, la pratique
+          non. L'écart entre les deux explique pourquoi un module peut paraître hors
+          sujet — et le masquer aurait laissé la question sans réponse. */}
+      <div>
+        <span>Jours pratiqués</span>
+        <b>{day.jours_pratiques}</b>
+      </div>
+      {/* Chiffre enfin honnête : le dénominateur contient désormais les activités
+          proposées et non faites. Il valait 100 % en permanence, parce que seules
+          les réussites étaient enregistrées. */}
+      <div>
+        <span>Assiduité 7 j</span>
+        <b>{Math.round(day.adherence_7j * 100)} %</b>
+      </div>
+    </div>
+  )
+}
+
+export default function ProgrammeDuJour({
+  day,
+  busy,
+  onOpen,
+}: {
+  day: ProgramDay
+  busy: boolean
+  onOpen: (type: LaunchType, label?: string) => void
+}) {
+  const [shown, setShown] = useState<string | null>(null)
 
   return (
     <>
       <p className="tiny dim">
         Semaine {day.week} · module {day.module} — {day.module_title}. {day.module_goal}
       </p>
-      <div className="sum">
-        <div>
-          <span>Le socle</span>
-          <b>
-            {socleDone}/{socle.length}
-          </b>
-        </div>
-        <div>
-          <span>En plus</span>
-          <b>{extra}</b>
-        </div>
-        <div>
-          <span>Jours d'affilée</span>
-          <b>{day.streak}</b>
-        </div>
-        {/* Les deux chiffres côte à côte : la semaine avance au calendrier, la pratique
-            non. L'écart entre les deux explique pourquoi un module peut paraître hors
-            sujet — et le masquer aurait laissé la question sans réponse. */}
-        <div>
-          <span>Jours pratiqués</span>
-          <b>{day.jours_pratiques}</b>
-        </div>
-        {/* Chiffre enfin honnête : le dénominateur contient désormais les activités
-            proposées et non faites. Il valait 100 % en permanence, parce que seules
-            les réussites étaient enregistrées. */}
-        <div>
-          <span>Assiduité 7 j</span>
-          <b>{Math.round(day.adherence_7j * 100)} %</b>
-        </div>
-      </div>
 
       {day.notices.map((notice) => (
         <p className="frame-note" key={notice}>
@@ -228,7 +238,7 @@ export default function ProgrammeDuJour({
           { label: 'Progression', value: `semaine ${day.week} sur 12` },
           {
             label: 'Ce qui est attendu',
-            value: `le socle (${socle.length} lignes) — le reste est proposé, jamais dû`,
+            value: 'le socle seul — le reste est proposé, jamais dû',
           },
         ]}
         contraindications="Ce n'est pas une liste à cocher, et il n'y a pas de série à préserver. Trois minutes tenues valent mieux qu'une heure prévue et non faite : une activité non faite est une donnée sur le format, pas un échec."

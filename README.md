@@ -51,8 +51,10 @@ une trentaine de fiches attendaient. Un refus explicite fait exception : reporte
 saisie ne la remet pas en avant dans la foulée, elle reste accessible par « Noter ».
 
 **Ce qui est attendu et ce qui est proposé sont deux choses.** Le bandeau **Mon
-parcours**, sous le titre, porte la date et le socle du jour — noter, respirer, écrire
-— et se déplie sur le programme entier. Il ne compte que le socle : le programme
+parcours**, sous le titre, porte la date et les cinq chiffres du jour — socle, activités
+faites en plus, jours d'affilée, jours réellement pratiqués, assiduité sur 7 jours. Ces
+chiffres ne défilent jamais : ils restent à l'écran pendant qu'on parcourt le texte
+déplié en dessous. Le compteur du socle ne compte que le socle : le programme
 propose cinq à huit items par jour, mais les afficher tous dans un compteur revenait à
 annoncer « 1/7 » à quelqu'un qui avait fait exactement ce qu'on lui demandait. Et il
 n'y a pas de série à préserver : un compteur qui se remet à zéro punit le jour où
@@ -61,6 +63,14 @@ c'était le plus dur.
 Le parcours n'est pas un widget du fil, et c'est délibéré : un programme est l'état du
 jour, pas un événement. Déposé dans un fil chronologique il défilait avec le reste, et
 l'information la plus consultée devenait la plus difficile à retrouver.
+
+**Chaque conseil porte les chiffres de la personne.** Toute proposition est suivie
+d'une ligne « Chez toi » tirée de son historique : une hypothèse pré-enregistrée
+retenue sur son domaine, une corrélation qui a survécu à la correction de
+multiplicité, l'effet déjà mesuré de l'exercice proposé chez elle, le moment de la
+journée où son anxiété monte, ou la tendance des sept derniers jours. Trois règles :
+toujours chiffré, jamais un signal non retenu, et quand rien n'est calculable la ligne
+dit combien de jours il manque au lieu d'inventer une généralité.
 
 **Un formulaire long ne s'affiche jamais d'un bloc.** Les saisies en plusieurs temps —
 le matin, le soir, l'exposition intéroceptive, le questionnaire initial, la séquence de

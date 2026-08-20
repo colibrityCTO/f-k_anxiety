@@ -249,19 +249,6 @@ export type DayState = {
   jours_depuis_exposition: number | null
   /** Jours réellement notés depuis le début. Garde de tout ce qui exige de l'historique. */
   jours_notes: number
-  /**
-   * Le contrat du jour, et lui seul : noter, respirer, écrire.
-   *
-   * Distinct de ce que le programme *propose* — cinq à huit items. « Mon parcours »
-   * affichait `fait / total` sur l'ensemble tout en écrivant qu'un seul était
-   * attendu : quelqu'un qui avait fait exactement ce qu'on lui demandait lisait
-   * « 1/7 ». La barre du haut ne compte que ce qui est réellement dû.
-   */
-  socle: {
-    items: { slug: string; label: string; fait: boolean }[]
-    fait: number
-    total: number
-  }
 }
 
 export type MemoryStats = {

@@ -1,4 +1,4 @@
-import ProgrammeDuJour from '../components/ProgrammeDuJour'
+import ProgrammeDuJour, { ChiffresDuJour, useProgramDay } from '../components/ProgrammeDuJour'
 import type { WidgetProps } from '../components/WidgetHost'
 
 /**
@@ -15,9 +15,17 @@ import type { WidgetProps } from '../components/WidgetHost'
  * finiraient par diverger.
  */
 export default function Jour({ busy, onOpen }: WidgetProps) {
+  const { day, error } = useProgramDay()
   return (
     <div className="w-body">
-      <ProgrammeDuJour busy={busy} onOpen={onOpen ?? (() => undefined)} />
+      {error && <p className="error-text">{error}</p>}
+      {!day && !error && <p className="dim">Chargement…</p>}
+      {day && (
+        <>
+          <ChiffresDuJour day={day} />
+          <ProgrammeDuJour day={day} busy={busy} onOpen={onOpen ?? (() => undefined)} />
+        </>
+      )}
     </div>
   )
 }

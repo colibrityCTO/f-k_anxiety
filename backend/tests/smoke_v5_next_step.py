@@ -146,11 +146,19 @@ with TestClient(app) as client:
         client.post(f"/chat/widget/{widget['id']}/submit", headers=h, json={"values": values})
 
     state = chat_mod.day_state(user_id, today)
+    # Lu dans le programme du jour, pas dans l'état du fil : c'est `build_day` qui
+    # calcule le socle, et le dupliquer ailleurs aurait fait diverger les deux.
+    plan = program.build_day(user_id, {}, today)
+    socle = [i for i in plan["items"] if i["slot"] == "socle"]
+    faits = [i for i in socle if i["status"] in {"fait", "partiel"}]
     check(
         "le socle est complet",
-        state["socle"]["fait"] == state["socle"]["total"],
-        f"{state['socle']['fait']}/{state['socle']['total']} — "
-        + " · ".join(f"{i['label']}={'✓' if i['fait'] else '·'}" for i in state["socle"]["items"]),
+        len(faits) == len(socle),
+        f"{len(faits)}/{len(socle)} — "
+        + " · ".join(
+            f"{i['activity']['slug']}={'✓' if i['status'] in {'fait', 'partiel'} else '·'}"
+            for i in socle
+        ),
     )
 
     step = next_step.choose({"id": user_id, "profile": {"difficultes": ["panique"]}}, state)
@@ -357,6 +365,41 @@ with TestClient(app) as client:
         "mais un formulaire validé survit à toutes les réouvertures",
         int(valides["n"]) == 1,
         "le passé ne se réécrit pas — seul le vierge est retiré",
+    )
+
+    # --- 6 quater. Les conseils parlent des données de la personne -----------
+    #
+    # Un conseil qui vaut pour tout le monde ne vaut pour personne longtemps. Chaque
+    # étape porte donc une ligne tirée de l'historique — et quand rien n'est encore
+    # calculable, elle dit combien il en manque au lieu d'inventer une généralité.
+    plan_du_jour = program.build_day(user_id, {}, today)
+    sig = plan_du_jour["_signaux"]
+    maintenant = dt.datetime.now()
+    ligne = next_step.pour_toi(sig, state, {"widget": {"type": "matin"}}, maintenant)
+    check(
+        "une proposition porte une ligne chiffrée sur la personne",
+        bool(ligne) and "Chez toi" in str(ligne),
+        f"« {str(ligne)[:130]}… »",
+    )
+    check(
+        "et sur un compte neuf, elle dit ce qui manque plutôt que d'inventer",
+        "jour" in str(ligne),
+        f"{state['jours_notes']} jour(s) noté(s) — sous une douzaine, aucune régularité "
+        "personnelle n'est annonçable",
+    )
+    # La règle qui compte : un signal non retenu ne devient jamais un conseil.
+    repris = [
+        x["id"]
+        for x in sig["signaux"]
+        if x.get("retenu") is False
+        and x.get("value") is not None
+        and str(x["value"]) in str(ligne)
+    ]
+    check(
+        "aucun signal non retenu n'est repris dans le conseil",
+        not repris,
+        "une association qui n'a pas survécu à la correction de multiplicité ne "
+        "devient pas une régularité parce qu'on la formule gentiment",
     )
 
     # --- 7. L'assiduité a un dénominateur ------------------------------------

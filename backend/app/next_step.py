@@ -25,7 +25,7 @@ import datetime as dt
 import logging
 from typing import Any
 
-from . import db, program
+from . import db, program, signals as signals_mod
 
 logger = logging.getLogger("fuck_anxiety.next_step")
 
@@ -304,6 +304,178 @@ def _first_paragraph(content: str, limit: int = 420, skip: str | None = None) ->
     return ""
 
 
+# --- « Chez toi » --------------------------------------------------------------
+#
+# Un conseil qui vaut pour tout le monde ne vaut pour personne longtemps. Chaque étape
+# est donc accompagnée d'une ligne tirée des données de la personne : ce qu'elle a
+# saisi, son historique, l'heure qu'il est.
+#
+# Trois règles, et la troisième est la plus importante :
+#
+# 1. **Toujours chiffré, jamais qualitatif.** « Tu sembles mieux dormir » n'est pas
+#    une observation, c'est une impression prêtée à la machine.
+# 2. **Jamais un signal non retenu.** Une association qui n'a pas survécu à la
+#    correction de multiplicité ne devient pas une régularité parce qu'on la formule
+#    gentiment. C'est la règle que le moteur adaptatif applique déjà.
+# 3. **Le manque de données se dit, il ne se comble pas.** Quand rien n'est encore
+#    calculable, la ligne annonce combien il en faut — et c'est déjà personnalisé,
+#    puisqu'elle nomme le compte réel de la personne. Inventer une généralité pour
+#    remplir le vide est exactement ce qu'on veut empêcher.
+
+# À quel domaine se rattache une étape, pour aller chercher le bon signal. La clé est
+# le type de widget ou le slug d'activité ; l'ordre de recherche va du plus précis au
+# plus général.
+_DOMAINES: dict[str, str] = {
+    "matin": "sommeil",
+    "regularite-sommeil": "sommeil",
+    "agenda-sommeil": "sommeil",
+    "breath": "respiration",
+    "respiration-lente-10": "respiration",
+    "soupir-physiologique": "respiration",
+    "exposition": "evitement",
+    "exposition-in-vivo": "evitement",
+    "echelle-exposition": "evitement",
+    "interoceptif": "panique",
+    "exposition-interoceptive": "panique",
+    "reduction-cafeine": "cafeine",
+    "activite-physique": "sport",
+}
+
+# Ce qui, dans l'identifiant d'une hypothèse pré-enregistrée, la rattache à un
+# domaine. Les identifiants sont stables et documentés dans `hypotheses.py` ; les
+# apparier par mot-clé évite d'y maintenir une seconde table de correspondance.
+_MOTS_CLES: dict[str, tuple[str, ...]] = {
+    "sommeil": ("nuit",),
+    "cafeine": ("cafeine",),
+    "sport": ("sport",),
+    "evitement": ("evitement", "exposition"),
+    "respiration": ("respiratoire",),
+    "panique": ("panique",),
+}
+
+_TRANCHES = {"matin": (5, 12), "après-midi": (12, 17), "soirée": (17, 24), "nuit": (0, 5)}
+
+
+def _tranche_courante(now: dt.datetime) -> str:
+    for nom, (low, high) in _TRANCHES.items():
+        if low <= now.hour < high:
+            return nom
+    return "nuit"
+
+
+def pour_toi(
+    sig: dict[str, Any] | None,
+    state: dict[str, Any],
+    step: dict[str, Any],
+    now: dt.datetime,
+) -> str | None:
+    """La ligne personnelle qui accompagne une proposition, ou `None`.
+
+    Elle passe en revue, du plus spécifique au plus général : une hypothèse
+    pré-enregistrée retenue sur le domaine de l'étape, l'effet mesuré de l'activité
+    proposée chez cette personne, le moment de la journée où son anxiété monte, puis
+    la tendance des sept derniers jours. À défaut, ce qui manque pour conclure.
+    """
+    if not sig:
+        return None
+    get = lambda sid: signals_mod.signal_by_id(sig, sid)  # noqa: E731
+
+    widget = (step.get("widget") or {}).get("type")
+    slug = (step.get("activity") or {}).get("slug")
+    domaine = _DOMAINES.get(slug or "") or _DOMAINES.get(widget or "")
+
+    # 1. Une hypothèse écrite à l'avance et retenue sur les données de la personne.
+    #    C'est la preuve la plus solide dont l'application dispose sur quelqu'un : la
+    #    question a été posée avant de regarder, pas après. La liste renvoyée par le
+    #    signal ne contient **que** les retenues — les autres vivent dans ses
+    #    observations, et n'ont rien à faire dans un conseil.
+    hypo = get("hypotheses")
+    if domaine and hypo and isinstance(hypo.get("value"), list):
+        for row in hypo["value"]:
+            if any(mot in str(row.get("id", "")) for mot in _MOTS_CLES.get(domaine, ())):
+                return f"**Chez toi** — {row['libelle'].lower()} : {row['verdict']}"
+
+    # 2. Une corrélation retenue sur le même domaine.
+    correlations = {
+        "sommeil": "correlation_sommeil_anxiete",
+        "cafeine": "correlation_cafeine_anxiete",
+        "sport": "correlation_sport_anxiete",
+    }
+    if domaine in correlations:
+        corr = get(correlations[domaine])
+        if corr and corr.get("retenu") and corr.get("value") is not None:
+            return (
+                f"**Chez toi** — sur {corr['n_brut']} jours enregistrés, "
+                f"{corr['label'].lower()} : {corr['verdict']}"
+            )
+
+    # 3. L'effet déjà mesuré de l'activité proposée, chez cette personne.
+    effet = get("effet_mesure_activites")
+    if slug and effet and isinstance(effet.get("value"), list):
+        for row in effet["value"]:
+            if row.get("activite") == slug:
+                sens = "descendre" if row["delta_moyen"] < 0 else "monter"
+                return (
+                    f"**Chez toi** — cet exercice fait {sens} l'anxiété de "
+                    f"**{abs(row['delta_moyen'])} point** en moyenne, sur {row['n']} séances "
+                    "mesurées avant/après."
+                )
+
+    # 3 bis. Les deux agrégats simples, quand le domaine n'a ni corrélation ni effet
+    #        mesuré à montrer. Ce sont des comptages, pas des associations : ils se
+    #        disent tels quels, sans verdict statistique.
+    if domaine == "evitement":
+        evit = get("evitement")
+        if evit and evit.get("value") is not None:
+            return (
+                f"**Chez toi** — évitement moyen déclaré : **{evit['value']}/10** "
+                f"sur {evit['n']} jours ({evit['verdict']}). C'est ce que cet exercice vise."
+            )
+    if domaine == "panique":
+        pan = get("attaques_panique")
+        if pan and isinstance(pan.get("value"), int):
+            return (
+                f"**Chez toi** — {pan['value']} attaque(s) enregistrée(s) sur "
+                f"{pan['n']} jours."
+                if pan["value"]
+                else f"**Chez toi** — aucune attaque enregistrée sur {pan['n']} jours. "
+                "L'exercice sert quand même : il travaille la peur des sensations, "
+                "pas la fréquence des crises."
+            )
+
+    # 4. Le moment de la journée. C'est la seule information contextuelle qui ne
+    #    dépende pas d'un historique long — et elle change ce qui est pertinent.
+    tranches = get("tranches_horaires")
+    ici = _tranche_courante(now)
+    if tranches and isinstance(tranches.get("value"), dict):
+        pire = tranches["value"].get("pire")
+        if pire and pire.get("tranche") == ici:
+            return (
+                f"**Chez toi** — c'est en {ici} que ça monte le plus : "
+                f"**{pire['moyenne']}/10** en moyenne sur {pire['n']} mesures. "
+                "C'est donc le bon moment pour ça."
+            )
+
+    # 5. La tendance, si l'écart dépasse le bruit de mesure.
+    tendance = get("tendance_anxiete")
+    if tendance and tendance.get("delta") is not None and abs(tendance["delta"]) >= 0.7:
+        sens = "en baisse" if tendance["delta"] < 0 else "en hausse"
+        return (
+            f"**Chez toi** — moyenne des 7 derniers jours : **{tendance['value']}/10**, "
+            f"{sens} de {abs(tendance['delta'])} point sur les 7 précédents."
+        )
+
+    # 6. Rien de calculable : on dit combien il en faut, avec le compte réel.
+    jours = state.get("jours_notes", 0)
+    if jours < 12:
+        return (
+            f"**Chez toi** — {jours} jour(s) noté(s) pour l'instant. Il en faut une douzaine "
+            "avant que tes propres régularités deviennent lisibles ; d'ici là je ne te dirai "
+            "que ce qui vaut en général, et je le dirai comme tel."
+        )
+    return None
+
+
 # --- Explications ------------------------------------------------------------
 #
 # Ce qui s'apprend, par opposition à ce qui se fait. Deux règles :
@@ -564,6 +736,11 @@ def choose(
             step["suggestions"] = suggestions_for(
                 state, plan, exclude=exclude | _occupied(step), now=now
             )
+            # La ligne personnelle vient **avant** de retirer `activity` : c'est elle
+            # qui dit de quel domaine relève l'étape.
+            ligne = pour_toi((plan or {}).get("_signaux"), state, step, now)
+            if ligne:
+                step["reply"] = f"{step['reply']}\n\n{ligne}"
             step["explication"] = explanation_for(user_id, state, step, today)
             step.pop("activity", None)
             step.pop("explain_doc", None)
@@ -580,6 +757,9 @@ def choose(
         engine="classeur",
     )
     fallback["suggestions"] = suggestions_for(state, plan, exclude=exclude, now=now)
+    ligne = pour_toi((plan or {}).get("_signaux"), state, fallback, now)
+    if ligne:
+        fallback["reply"] = f"{fallback['reply']}\n\n{ligne}"
     return fallback
 
 

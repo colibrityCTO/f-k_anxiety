@@ -346,7 +346,7 @@ export default function Chat() {
           dépliables sur le programme entier. C'est l'état du jour, pas un événement —
           le déposer dans un fil chronologique le faisait défiler avec le reste, et
           l'information la plus consultée devenait la plus difficile à retrouver. */}
-      <Parcours state={state} busy={busy} onOpen={openWidget} />
+      <Parcours busy={busy} onOpen={openWidget} />
 
       <div className="thread" ref={view}>
         {hasMore && (
