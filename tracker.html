@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>84 дня · трекер</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&display=swap');
+
+:root{
+  --bg: #E9EFEA;
+  --bg-panel: #F5F8F5;
+  --ink: #1E2B27;
+  --ink-soft: #52655D;
+  --teal: #3E6E64;
+  --teal-deep: #2C514A;
+  --gold: #C99A4A;
+  --rose: #B3556B;
+  --line: #D2DDD5;
+  --shadow: 0 1px 2px rgba(30,43,39,0.06);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+html,body{margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:'Work Sans', sans-serif;}
+body{
+  min-height:100vh;
+  display:flex; justify-content:center;
+  padding: 20px 14px 60px;
+}
+.app{ width:100%; max-width: 480px; }
+
+h1,h2,h3{ font-family:'Fraunces', serif; margin:0; font-weight:600; }
+
+/* ---------- Hero ---------- */
+.hero{
+  background: linear-gradient(180deg, var(--teal-deep), var(--teal));
+  border-radius: 20px;
+  padding: 26px 20px 22px;
+  color: #F2F5F1;
+  position: relative;
+  overflow:hidden;
+  box-shadow: 0 8px 24px rgba(44,81,74,0.25);
+}
+.hero-top{
+  display:flex; justify-content:space-between; align-items:flex-start;
+  margin-bottom: 18px;
+}
+.hero-eyebrow{ font-size:12px; letter-spacing:0.08em; text-transform:uppercase; opacity:0.75; }
+.hero-title{ font-size: 20px; margin-top:4px; }
+.streak-pill{
+  background: rgba(255,255,255,0.14);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.breath-wrap{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  padding: 6px 0 4px;
+}
+.breath-circle{
+  width: 108px; height:108px; border-radius:50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.35), rgba(201,154,74,0.55) 60%, rgba(201,154,74,0.15) 100%);
+  border: 1px solid rgba(255,255,255,0.4);
+  display:flex; align-items:center; justify-content:center;
+  animation: breathe 14s ease-in-out infinite;
+}
+.breath-inner{
+  font-family:'Fraunces', serif;
+  font-size: 26px;
+  font-weight: 600;
+}
+.breath-label{ font-size:12px; opacity:0.85; letter-spacing: 0.04em; }
+@keyframes breathe{
+  0%   { transform: scale(0.82); }
+  28.5%{ transform: scale(1.08); }   /* вдох ~4s of 14s */
+  57%  { transform: scale(1.08); }   /* задержка ~4s */
+  100% { transform: scale(0.82); }   /* выдох ~6s */
+}
+
+/* ---------- Phase strip ---------- */
+.phase-strip{
+  margin-top: 16px;
+  font-size: 13px;
+  color: rgba(242,245,241,0.9);
+  border-top: 1px solid rgba(255,255,255,0.18);
+  padding-top: 12px;
+}
+
+/* ---------- Week nav ---------- */
+.section{ margin-top: 22px; }
+.section-label{
+  font-size: 12px; text-transform:uppercase; letter-spacing:0.08em;
+  color: var(--ink-soft); margin-bottom: 10px;
+}
+.week-scroll{
+  display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;
+  scrollbar-width:none;
+}
+.week-scroll::-webkit-scrollbar{ display:none; }
+.week-btn{
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--ink-soft);
+  font-family:'Work Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor:pointer;
+}
+.week-btn.active{
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+}
+
+/* ---------- Day grid ---------- */
+.day-grid{
+  display:grid; grid-template-columns: repeat(7, 1fr); gap:8px;
+  margin-top: 12px;
+}
+.day-cell{
+  aspect-ratio: 1;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  display:flex; align-items:center; justify-content:center;
+  font-size: 13px; font-weight:500; color:var(--ink-soft);
+  cursor:pointer;
+  position:relative;
+}
+.day-cell.selected{ outline: 2px solid var(--teal); outline-offset: 1px; }
+.day-cell .fill{
+  position:absolute; inset:0; border-radius:10px;
+  background: var(--gold);
+  opacity: var(--p, 0);
+}
+.day-cell span{ position:relative; z-index:1; }
+.day-cell.done span{ color:#fff; }
+.day-cell.done{ color:#fff; }
+
+/* ---------- Detail panel ---------- */
+.panel{
+  margin-top: 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+.panel-header{
+  display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom: 4px;
+}
+.panel-day{ font-size:17px; }
+.panel-phase{ font-size:12px; color:var(--ink-soft); }
+.task-list{ margin-top: 14px; display:flex; flex-direction:column; gap:10px; }
+.task{
+  display:flex; align-items:flex-start; gap:10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  cursor:pointer;
+  transition: background 0.15s;
+}
+.task.checked{ background: #F1EAD9; border-color: var(--gold); }
+.checkbox{
+  width:20px; height:20px; border-radius:6px;
+  border: 1.5px solid var(--ink-soft);
+  flex: 0 0 auto; margin-top:1px;
+  display:flex; align-items:center; justify-content:center;
+  background:#fff;
+}
+.task.checked .checkbox{ background: var(--gold); border-color: var(--gold); }
+.checkbox svg{ display:none; width:12px; height:12px; }
+.task.checked .checkbox svg{ display:block; }
+.task-text{ font-size:14px; line-height:1.4; }
+
+.note-label{ font-size:12px; color:var(--ink-soft); margin-top:16px; margin-bottom:6px; }
+textarea{
+  width:100%; min-height:64px; resize:vertical;
+  border-radius:10px; border:1px solid var(--line);
+  padding:10px 12px; font-family:'Work Sans',sans-serif; font-size:14px;
+  background:#fff; color:var(--ink);
+}
+textarea:focus{ outline:1.5px solid var(--teal); }
+
+/* ---------- Progress footer ---------- */
+.progress-block{ margin-top: 22px; }
+.progress-row{
+  display:flex; justify-content:space-between; font-size:13px;
+  color: var(--ink-soft); margin-bottom:6px;
+}
+.bar-track{
+  height:8px; border-radius:99px; background: var(--line); overflow:hidden;
+}
+.bar-fill{
+  height:100%; background: linear-gradient(90deg, var(--teal), var(--gold));
+  border-radius:99px;
+  transition: width 0.3s ease;
+}
+
+.reset-row{ text-align:center; margin-top: 28px; }
+.reset-btn{
+  background:none; border:none; color: var(--rose);
+  font-family:'Work Sans',sans-serif; font-size:12px;
+  text-decoration:underline; cursor:pointer; opacity:0.7;
+}
+
+.loading{ text-align:center; padding:40px 0; color:var(--ink-soft); font-size:14px; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="loading">Загрузка…</div>
+</div>
+
+<script>
+const PHASES = [
+  { range:[1,2],  title:"Фаза 1 · База дыхания",
+    tasks:["Дыхание 4-4-6 утром","Растяжка перед сном","Запись наблюдения в дневник"] },
+  { range:[3,4],  title:"Фаза 2 · Релаксация и мысли",
+    tasks:["Box breathing при тревоге","PMR вечером","Мысль → более реалистичная (дневник)","Worry time — 15 минут"] },
+  { range:[5,6],  title:"Фаза 3 · Интероцептивная экспозиция",
+    tasks:["Интероцептивное упражнение","Лог ощущений: страх и схожесть","Мягкая йога / растяжка"] },
+  { range:[7,8],  title:"Фаза 4 · Усиление экспозиции",
+    tasks:["Интероцептивное упражнение","Шаг по иерархии избегания","Запись в дневник поведения"] },
+  { range:[9,10], title:"Фаза 5 · Принятие и консолидация",
+    tasks:["Что важное сделал несмотря на тревогу","Йога-нидра / долгая медитация","Поддерживающая экспозиция"] },
+  { range:[11,12],title:"Фаза 6 · Закрепление",
+    tasks:["Шаг по иерархии избегания","Письмо себе / план профилактики","Итоговая рефлексия дня"] },
+];
+
+const TOTAL_DAYS = 84;
+const STORAGE_KEY = "anxiety-tracker-v1";
+
+function phaseForWeek(week){
+  return PHASES.find(p => week >= p.range[0] && week <= p.range[1]);
+}
+function phaseForDay(dayIndex){
+  const week = Math.floor(dayIndex/7)+1;
+  return phaseForWeek(week);
+}
+
+let state = { days: {} }; // { "0": { checked:[bool..], note:"" } }
+let selectedDay = 0;
+let selectedWeek = 1;
+
+function getDayData(i){
+  if(!state.days[i]){
+    const phase = phaseForDay(i);
+    state.days[i] = { checked: phase.tasks.map(()=>false), note: "" };
+  }
+  return state.days[i];
+}
+
+async function loadState(){
+  try{
+    const res = await window.storage.get(STORAGE_KEY, false);
+    if(res && res.value){
+      state = JSON.parse(res.value);
+    }
+  }catch(e){
+    // no data yet, keep default
+  }
+}
+
+async function saveState(){
+  try{
+    await window.storage.set(STORAGE_KEY, JSON.stringify(state), false);
+  }catch(e){
+    console.error("Storage error", e);
+  }
+}
+
+function dayCompletionRatio(i){
+  const d = state.days[i];
+  const phase = phaseForDay(i);
+  if(!d) return 0;
+  const total = phase.tasks.length;
+  const done = d.checked.filter(Boolean).length;
+  return total ? done/total : 0;
+}
+
+function isDayFull(i){
+  return dayCompletionRatio(i) === 1 && state.days[i];
+}
+
+function computeStreak(){
+  let streak = 0;
+  for(let i=0;i<TOTAL_DAYS;i++){
+    if(isDayFull(i)) streak++;
+    else break;
+  }
+  return streak;
+}
+
+function computeOverall(){
+  let sum = 0;
+  for(let i=0;i<TOTAL_DAYS;i++){ sum += dayCompletionRatio(i); }
+  return Math.round((sum/TOTAL_DAYS)*100);
+}
+
+function currentDayPointer(){
+  // first day not fully completed
+  for(let i=0;i<TOTAL_DAYS;i++){
+    if(!isDayFull(i)) return i;
+  }
+  return TOTAL_DAYS-1;
+}
+
+function render(){
+  const app = document.getElementById('app');
+  const phase = phaseForDay(selectedDay);
+  const streak = computeStreak();
+  const overall = computeOverall();
+  const dayPointer = currentDayPointer();
+  const week = Math.floor(selectedDay/7)+1;
+
+  let weekButtons = "";
+  for(let w=1; w<=12; w++){
+    weekButtons += `<button class="week-btn ${w===selectedWeek?'active':''}" data-week="${w}">Нед ${w}</button>`;
+  }
+
+  let dayCells = "";
+  const weekStart = (selectedWeek-1)*7;
+  for(let d=0; d<7; d++){
+    const idx = weekStart+d;
+    const ratio = dayCompletionRatio(idx);
+    const full = ratio === 1;
+    dayCells += `<div class="day-cell ${idx===selectedDay?'selected':''} ${full?'done':''}" data-day="${idx}">
+        <div class="fill" style="--p:${ratio}"></div>
+        <span>${idx+1}</span>
+      </div>`;
+  }
+
+  const dayData = getDayData(selectedDay);
+  let taskItems = "";
+  phase.tasks.forEach((t, ti) => {
+    const checked = dayData.checked[ti];
+    taskItems += `<div class="task ${checked?'checked':''}" data-task="${ti}">
+        <div class="checkbox"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#2C514A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="task-text">${t}</div>
+      </div>`;
+  });
+
+  app.innerHTML = `
+    <div class="hero">
+      <div class="hero-top">
+        <div>
+          <div class="hero-eyebrow">Программа · 84 дня</div>
+          <div class="hero-title">День ${dayPointer+1} из ${TOTAL_DAYS}</div>
+        </div>
+        <div class="streak-pill">🔥 ${streak} ${streakWord(streak)} подряд</div>
+      </div>
+      <div class="breath-wrap">
+        <div class="breath-circle"><div class="breath-inner">${Math.round(overall)}%</div></div>
+        <div class="breath-label">вдох 4 · задержка 4 · выдох 6</div>
+      </div>
+      <div class="phase-strip">${phase.title}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Недели</div>
+      <div class="week-scroll" id="weekScroll">${weekButtons}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Неделя ${selectedWeek}</div>
+      <div class="day-grid" id="dayGrid">${dayCells}</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-day">День ${selectedDay+1}</div>
+        <div class="panel-phase">${phase.title}</div>
+      </div>
+      <div class="task-list" id="taskList">${taskItems}</div>
+      <div class="note-label">Заметка дня</div>
+      <textarea id="noteArea" placeholder="Мысль / наблюдение / как прошло...">${dayData.note}</textarea>
+    </div>
+
+    <div class="progress-block">
+      <div class="progress-row"><span>Прогресс программы</span><span>${overall}%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${overall}%"></div></div>
+    </div>
+
+    <div class="reset-row">
+      <button class="reset-btn" id="resetBtn">Сбросить весь прогресс</button>
+    </div>
+  `;
+
+  attachHandlers();
+}
+
+function streakWord(n){
+  const mod10 = n % 10, mod100 = n % 100;
+  if(mod10===1 && mod100!==11) return "день";
+  if([2,3,4].includes(mod10) && ![12,13,14].includes(mod100)) return "дня";
+  return "дней";
+}
+
+function attachHandlers(){
+  document.querySelectorAll('.week-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      selectedWeek = parseInt(btn.dataset.week);
+      selectedDay = (selectedWeek-1)*7; // jump to first day of week
+      render();
+    });
+  });
+  document.querySelectorAll('.day-cell').forEach(cell=>{
+    cell.addEventListener('click', ()=>{
+      selectedDay = parseInt(cell.dataset.day);
+      render();
+    });
+  });
+  document.querySelectorAll('.task').forEach(taskEl=>{
+    taskEl.addEventListener('click', async ()=>{
+      const ti = parseInt(taskEl.dataset.task);
+      const d = getDayData(selectedDay);
+      d.checked[ti] = !d.checked[ti];
+      await saveState();
+      render();
+    });
+  });
+  const noteArea = document.getElementById('noteArea');
+  let noteTimeout;
+  noteArea.addEventListener('input', ()=>{
+    const d = getDayData(selectedDay);
+    d.note = noteArea.value;
+    clearTimeout(noteTimeout);
+    noteTimeout = setTimeout(()=>{ saveState(); }, 500);
+  });
+  document.getElementById('resetBtn').addEventListener('click', async ()=>{
+    if(confirm('Точно сбросить весь прогресс за 84 дня?')){
+      state = { days: {} };
+      selectedDay = 0; selectedWeek = 1;
+      await saveState();
+      render();
+    }
+  });
+}
+
+(async function init(){
+  await loadState();
+  selectedDay = Math.min(currentDayPointer(), TOTAL_DAYS-1);
+  selectedWeek = Math.floor(selectedDay/7)+1;
+  render();
+})();
+</script>
+</body>
+</html>
